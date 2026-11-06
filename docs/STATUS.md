@@ -1,4 +1,4 @@
-# Current release: 0.3.4
+# Current release: 0.3.5
 
 The GitHub distribution and update feed use `justicefrangipane/Tablet-Pro-Radial`. See [tray and updates](TRAY-AND-UPDATES.md) and the [release guide](RELEASING.md) for the current Windows workflow. The notes below are the historical 0.3.0 implementation audit, not current release acceptance results.
 

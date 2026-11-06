@@ -271,7 +271,9 @@ struct RadialSurface::State {
     std::vector<ChildParticle> childParticles;
     std::vector<double> ends;
     QImage atlas;
-    void rebuild(const QVariantList &roots,const QVariantList &childList,const QVariantList &retiringList,bool glassEnabled) {
+    bool railStyle = false;
+    void rebuild(const QVariantList &roots,const QVariantList &childList,const QVariantList &retiringList,bool glassEnabled,bool continuousRail) {
+        railStyle=continuousRail;
         buttons.clear();children.clear();retiring.clear();particles.clear();childParticles.clear();ends.clear();
         for(int i=0;i<roots.size();i++)buttons.push_back(readButton(roots[i],i));
         for(int i=0;i<childList.size();i++)children.push_back(readChild(childList[i],i));
@@ -282,7 +284,8 @@ struct RadialSurface::State {
         const auto slot=[&](int index,int side){return QRect((index%cols)*spriteSize,(index/cols)*spriteSize,side,side);};
         const auto drawDock=[&](Button &b,QRect rect){
             ap.save();ap.translate(rect.topLeft());QLinearGradient gradient(0,0,44,44);gradient.setColorAt(0,withAlpha(mix(QColor("#303b4f"),b.color,.4),glassEnabled?.48:1));gradient.setColorAt(1,withAlpha(mix(QColor("#303b4f"),b.color,.16),glassEnabled?.60:1));
-            ap.setBrush(gradient);ap.setPen(QPen(withAlpha(b.color,.62),.8));ap.drawRoundedRect(QRectF(.5,.5,43,43),11,11);paintIcon(ap,b.icon,{22,22});ap.restore();
+            if(!continuousRail){ap.setBrush(gradient);ap.setPen(QPen(withAlpha(b.color,.62),.8));ap.drawRoundedRect(QRectF(.5,.5,43,43),11,11);}
+            paintIcon(ap,b.icon,{22,22});ap.restore();
         };
         for(int i=0;i<int(buttons.size());i++){
             auto &b=buttons[i];b.sourceAtlas=slot(i*2,256);b.targetAtlas=slot(i*2+1,44);
@@ -376,6 +379,7 @@ void RadialSurface::setChildButtons(const QVariantList &v){
 }
 void RadialSurface::setSelectedId(const QString &v){if(m_selectedId==v)return;m_selectedId=v;emit selectedIdChanged();update();}
 void RadialSurface::setGlassEnabled(bool v){if(m_glassEnabled==v)return;m_glassEnabled=v;m_dirty=true;emit glassEnabledChanged();update();}
+void RadialSurface::setContinuousRail(bool v){if(m_continuousRail==v)return;m_continuousRail=v;m_dirty=true;emit continuousRailChanged();update();}
 void RadialSurface::setDockProgress(qreal v){v=clamp(v);if(qFuzzyCompare(m_dockProgress,v))return;m_dockProgress=v;emit dockProgressChanged();update();}
 void RadialSurface::setReducedMotion(bool v){
     if(m_reducedMotion==v)return;m_reducedMotion=v;
@@ -455,7 +459,11 @@ SceneBuffers buildScene(const auto &s,double t,const QString &selectedId,double 
     // Quiet hub orientation mark and selection halos are screen-space cues.
     if(!s.buttons.empty()&&t<.38){const auto c=s.buttons.front().radialCenter;const double a=1-easeSmooth((t-.06)/.32);for(int i=0;i<40;i++)line(outlines,c+polar(12,i*2*pi/40),c+polar(12,(i+1)*2*pi/40),.8,withAlpha(QColor("#71839e"),a*.48));halo(lights,c,20,beam,a*.04);}
     if(t<=0||t>=1)for(const auto &b:s.buttons)if(b.id==selectedId){
-        if(t>=1){halo(lights,b.dock,36,b.color,.28);for(int i=0;i<36;i++)line(outlines,b.dock+polar(26,i*2*pi/36),b.dock+polar(26,(i+1)*2*pi/36),1.2,withAlpha(beam,.7));}
+        if(t>=1&&s.railStyle){
+            quad(lights,b.dock+QPointF(-20,-21),b.dock+QPointF(20,-21),b.dock+QPointF(20,21),b.dock+QPointF(-20,21),withAlpha(beam,.12));
+            line(outlines,b.dock+QPointF(-19,-11),b.dock+QPointF(-19,11),1.8,withAlpha(beam,.9));
+        }
+        else if(t>=1){halo(lights,b.dock,36,b.color,.28);for(int i=0;i<36;i++)line(outlines,b.dock+polar(26,i*2*pi/36),b.dock+polar(26,(i+1)*2*pi/36),1.2,withAlpha(beam,.7));}
         else {const auto span=pi/3;for(int j=0;j<30;j++){double a0=b.angle-span/2+.04+j*(span-.08)/30;double a1=b.angle-span/2+.04+(j+1)*(span-.08)/30;line(outlines,b.radialCenter+polar(94,a0),b.radialCenter+polar(94,a1),2,withAlpha(beam,.85));}halo(lights,b.center,30,b.color,.22);}
     }
     for(const auto &p:s.childParticles){
@@ -544,7 +552,7 @@ void paintTextures(QPainter &p,const Textures &vertices,const QImage &atlas,doub
 
 bool RadialSurface::prepareGeometry() {
     const bool rebuild=m_dirty;
-    if(rebuild){m_state->rebuild(m_buttons,m_children,m_retiringChildren,m_glassEnabled);m_dirty=false;}
+    if(rebuild){m_state->rebuild(m_buttons,m_children,m_retiringChildren,m_glassEnabled,m_continuousRail);m_dirty=false;}
     else for(int i=0;i<int(m_state->children.size());i++){
         const auto atlasRect=m_state->children[i].targetAtlas;
         m_state->children[i]=readChild(m_children[i],i);m_state->children[i].targetAtlas=atlasRect;

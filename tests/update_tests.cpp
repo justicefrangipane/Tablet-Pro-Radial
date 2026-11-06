@@ -14,6 +14,8 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QQuickItem>
+#include <QColor>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <iostream>
@@ -112,6 +114,7 @@ void trayTests(){
     qmlRegisterUncreatableType<MenuSession>("TabletPro",1,0,"MenuSession","Provided");
     qmlRegisterUncreatableType<StylusInput>("TabletPro",1,0,"StylusInput","Provided");
     QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("studio",&studio);engine.rootContext()->setContextProperty("startInEditor",false);
+    QObject::connect(&engine,&QQmlApplicationEngine::warnings,[](const QList<QQmlError>& warnings){for(const auto& warning:warnings)std::cerr<<warning.toString().toStdString()<<'\n';});
     engine.load(QUrl("qrc:/qml/Main.qml"));expect(!engine.rootObjects().isEmpty(),"QML loaded");
     auto* editor=qobject_cast<QQuickWindow*>(engine.rootObjects().first());auto* overlay=editor->findChild<QQuickWindow*>("runtimeOverlay");expect(overlay,"overlay found");
     DesktopShell shell(&studio,overlay,nullptr,true);engine.rootContext()->setContextProperty("desktop",&shell);
@@ -134,6 +137,54 @@ void trayTests(){
     expect(exit==2&&!studio.dirty(),"discard explicit before quitting");
     quit->trigger();expect(exit==3,"clean quit immediate");
     expect(!DesktopShell::icon().pixmap(16,16).isNull(),"tray icon at small size");
+    studio.runtime()->setReducedMotion(true);
+    studio.runtime()->toggleDock();
+    overlay->show();
+    auto* rail=overlay->findChild<QQuickItem*>("overlayRail");
+    auto* settings=overlay->findChild<QQuickItem*>("railSettingsPanel");
+    auto* railToggle=overlay->findChild<QObject*>("railSettingsButton");
+    auto* surface=overlay->findChild<RadialSurface*>("runtimeSurface");
+    auto* floatingHub=overlay->findChild<QQuickItem*>("overlayToolbar");
+    auto* floatingOptions=overlay->findChild<QQuickItem*>("overlayMorePanel");
+    expect(rail&&settings&&railToggle&&surface&&floatingHub&&floatingOptions,"continuous rail controls exist");
+    expect(rail->isVisible()&&!floatingHub->isVisible()&&surface->isVisible(),"docked rail replaces the circular hub");
+    for(const auto height:{480,768,1080}){
+        overlay->resize(720,height);QCoreApplication::processEvents();
+        expect(rail->width()==44&&rail->x()==13&&rail->y()>=0&&rail->y()+rail->height()<=height,"rail stays inside the viewport at supported desktop sizes");
+        for(const auto& value:studio.runtime()->buttons()){
+            const auto b=value.toMap();expect(b["dockX"].toDouble()-22==rail->x()&&b["dockX"].toDouble()+22==rail->x()+rail->width(),"tool and rail edges align exactly");
+        }
+    }
+    QMetaObject::invokeMethod(railToggle,"clicked",Qt::DirectConnection);
+    expect(settings->isVisible()&&!surface->isVisible()&&!surface->isEnabled()&&!floatingOptions->isVisible(),"settings replace drawing tools without a flyout or hidden action targets");
+    for(const auto* key:{"radial","edit","sound","glass","hide","quit"}){
+        const auto name=QString("railAction_")+key;
+        auto* action=settings->findChild<QQuickItem*>(name);
+        if(!action)for(auto* child:settings->childItems())if(child->objectName()==name){action=child;break;}
+        if(!action||!action->isVisible())std::cerr<<"Missing visible action: "<<name.toStdString()<<'\n';
+        expect(action&&action->isVisible(),"settings action visible");
+        const auto rect=action->mapRectToScene(action->boundingRect());
+        expect(rect.left()==rail->x()&&rect.right()==rail->x()+44&&rect.top()>=rail->y()&&rect.bottom()<=rail->y()+rail->height(),"every open settings action stays within the 44px rail");
+        expect(action->width()==44&&action->height()==44,"settings retain full-size pointer targets");
+        expect(action->property("iconColor").value<QColor>()!=overlay->findChild<QObject*>("dockModeButton")->property("iconColor").value<QColor>(),"settings icons are distinct from the drawing-control palette");
+    }
+    const auto actionItem=[&](const QString& key)->QQuickItem*{for(auto* child:settings->childItems())if(child->objectName()=="railAction_"+key)return child;return nullptr;};
+    auto* sound=actionItem("sound");const bool soundBefore=studio.soundEnabled();
+    QMetaObject::invokeMethod(sound,"clicked",Qt::DirectConnection);
+    expect(studio.soundEnabled()!=soundBefore&&sound->property("highlighted").toBool()==studio.soundEnabled()&&settings->isVisible(),"sound toggles in place with visible state");
+    auto* glass=actionItem("glass");const bool glassBefore=studio.backdropEnabled();
+    QMetaObject::invokeMethod(glass,"clicked",Qt::DirectConnection);
+    expect(studio.backdropEnabled()!=glassBefore&&glass->property("highlighted").toBool()==studio.backdropEnabled()&&settings->isVisible(),"glass toggles in place with visible state");
+    QMetaObject::invokeMethod(railToggle,"clicked",Qt::DirectConnection);
+    expect(!settings->isVisible()&&surface->isVisible()&&surface->isEnabled(),"back restores the drawing tools");
+    QMetaObject::invokeMethod(railToggle,"clicked",Qt::DirectConnection);
+    QMetaObject::invokeMethod(actionItem("radial"),"clicked",Qt::DirectConnection);
+    expect(!studio.runtime()->docked()&&!rail->isVisible()&&floatingHub->isVisible()&&!overlay->property("menuOpen").toBool(),"undock restores centered floating controls and closes settings");
+    studio.runtime()->toggleDock();
+    QMetaObject::invokeMethod(railToggle,"clicked",Qt::DirectConnection);
+    const int previousHide=hide;
+    QMetaObject::invokeMethod(actionItem("hide"),"clicked",Qt::DirectConnection);
+    expect(hide==previousHide+1&&!overlay->isVisible(),"rail Hide dismisses the overlay");
     engine.rootContext()->setContextProperty("desktop",static_cast<QObject*>(nullptr));
 }
 }

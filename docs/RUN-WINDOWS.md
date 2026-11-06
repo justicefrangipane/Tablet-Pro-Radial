@@ -1,12 +1,12 @@
 # Open the new radial menu
 
-This is the Windows x64 development build of Tablet Pro Radial 0.3.4. It contains Qt and the runtime dependencies used by the supplied pen-input library; no Qt installation or administrator setup is required.
+This is the Windows x64 development build of Tablet Pro Radial 0.3.5. It contains Qt and the runtime dependencies used by the supplied pen-input library; no Qt installation or administrator setup is required.
 
 1. Close the original Tablet Pro Studio and the 0.2 radial while testing 0.3. The installer leaves 0.2 available.
 2. Download the latest installer from [GitHub Releases](https://github.com/justicefrangipane/Tablet-Pro-Radial/releases/latest), then run `Tablet-Pro-Radial-VERSION-Windows-x64-Setup.exe` and follow the installer. Use its Start menu shortcuts to open the floating menu, docked rail, or editor. Use one copy at a time; quit the current copy before opening a different mode.
 3. Hover with the pen, then press its first side button. A press hides/shows the menu; holding does not repeatedly toggle it. The menu remembers its floating/docked state while running.
 4. Select an action by pressing its icon and releasing. For a group such as Text, press and drag outward to reveal six children, then release over one. Return through the parent to backtrack.
-5. The wheel center contains **Send to dock**, **Edit**, and **•••**. In docked mode these controls sit above the rail, and the first icon changes to **Send to radial**. The overflow menu contains **Sound**, **Glass background**, **Hide**, and **Quit**. Edit opens the profile editor; **Pen button** opens input setup.
+5. The wheel center contains **Send to dock**, **Edit**, and **•••**. In docked mode, tap the top **•••** to switch the 44 px rail from drawing tools to settings. Its bronze background and warm ivory icons distinguish settings from tools. Choose **Send to radial**, **Edit**, **Sound**, **Glass**, **Hide**, or **Quit**, or tap the back arrow to return to drawing. Edit opens the profile editor; **Pen button** opens input setup.
 
 For future versions, open **Updates** from the tray or editor. The official repository is already configured. Choose **Check now**, **Download update**, then **Install update**.
 

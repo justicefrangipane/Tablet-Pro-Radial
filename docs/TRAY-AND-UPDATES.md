@@ -1,4 +1,4 @@
-# Tablet Pro Radial 0.3.4
+# Tablet Pro Radial 0.3.5
 
 The blue radial icon beside the Windows clock stays available while the editor
 and overlay are hidden. Windows may initially place it under the hidden-icons
@@ -7,6 +7,19 @@ Closing the editor keeps Radial available in the tray. Quit closes the applicati
 removes its icon, and stops its pen listener and hotkey. Unapplied drafts offer
 Apply, Discard, or Keep editing before quitting. Updates and Quit are also in the
 editor's bottom bar. The Glass rendering fix from 0.3.2 is included.
+
+## Continuous rail
+
+The docked menu uses a single 44 px housing with fine separators. Tap the top
+ellipsis to replace the drawing tools with Send to radial, Edit, Sound, Glass,
+Hide, and Quit. The open settings use a bronze background and warm ivory icons;
+the drawing tools retain their cool blue-gray appearance. Sound and Glass show
+an illuminated indicator when enabled. The back arrow restores the tools.
+
+Both states have the same width, including the Windows input and glass boundary.
+Settings use 44 px targets and do not leave hidden drawing actions underneath.
+The floating radial keeps its centered controls; its settings panel shares the
+new warm palette. Saved profiles, button assignments, and preferences are retained.
 
 ## GitHub updates
 

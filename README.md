@@ -8,7 +8,7 @@ A native Windows radial menu and editor with pen-button invocation, a docked rai
 
 Open the latest release and download the file ending in **Windows-x64-Setup.exe**. Run it on each computer. Setup installs for your Windows account and includes the Qt runtime; administrator access and a separate Qt installation are not required. The installer is currently unsigned.
 
-The current application version is **0.3.4**. This is the version used by the installer and updater.
+The current application version is **0.3.5**. This is the version used by the installer and updater.
 
 ## Get updates
 
@@ -23,6 +23,17 @@ For the older 0.3.3 build, enter `justicefrangipane/Tablet-Pro-Radial` in its Up
 Use **Ctrl+Alt+Space** or your configured pen button to show or hide the menu. Use the center controls to dock it, edit its buttons, or open more options. Closing the editor leaves Radial in the tray; **Quit** exits the app. Use only one Radial or Tablet Pro Studio instance at a time to avoid overlapping pen shortcuts.
 
 Save your custom menu with **Save test radial…**, and use **Apply draft** to activate editor changes. See [Windows quick start](docs/RUN-WINDOWS.md) and [tray and updates](docs/TRAY-AND-UPDATES.md).
+
+The docked **Continuous rail** keeps the tools and settings inside one 44 px housing. Tap **•••** at the top to switch to settings; the background turns bronze and the icons turn warm ivory. Settings replace the tool slots instead of opening a side panel. Tap the back arrow to return to drawing.
+
+<details>
+<summary>See the Continuous rail</summary>
+
+| Drawing tools | Settings |
+| --- | --- |
+| <img src="docs/images/continuous-rail-tools.png" width="60" alt="Cool blue-gray tool rail"> | <img src="docs/images/continuous-rail-settings.png" width="60" alt="Bronze settings rail with warm ivory icons"> |
+
+</details>
 
 ![Editor](docs/images/editor.png)
 

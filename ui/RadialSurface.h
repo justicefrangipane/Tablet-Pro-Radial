@@ -17,6 +17,7 @@ class RadialSurface : public QQuickPaintedItem
     Q_PROPERTY(qreal dockProgress READ dockProgress WRITE setDockProgress NOTIFY dockProgressChanged)
     Q_PROPERTY(bool reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY reducedMotionChanged)
     Q_PROPERTY(bool glassEnabled READ glassEnabled WRITE setGlassEnabled NOTIFY glassEnabledChanged)
+    Q_PROPERTY(bool continuousRail READ continuousRail WRITE setContinuousRail NOTIFY continuousRailChanged)
     // Conservative bounds of current and retiring children, including motion.
     Q_PROPERTY(QRectF visualBounds READ visualBounds NOTIFY visualBoundsChanged)
     Q_PROPERTY(bool childAnimating READ childAnimating NOTIFY visualBoundsChanged)
@@ -29,6 +30,7 @@ public:
     qreal dockProgress() const { return m_dockProgress; }
     bool reducedMotion() const { return m_reducedMotion; }
     bool glassEnabled() const { return m_glassEnabled; }
+    bool continuousRail() const { return m_continuousRail; }
     QRectF visualBounds() const;
     bool childAnimating() const { return m_childAnimation.state()==QAbstractAnimation::Running || m_retireAnimation.state()==QAbstractAnimation::Running; }
     void setButtons(const QVariantList &value);
@@ -37,6 +39,7 @@ public:
     void setDockProgress(qreal value);
     void setReducedMotion(bool value);
     void setGlassEnabled(bool value);
+    void setContinuousRail(bool value);
     Q_INVOKABLE QString hitRoot(qreal x, qreal y) const;
     void paint(QPainter *painter) override;
 signals:
@@ -46,6 +49,7 @@ signals:
     void dockProgressChanged();
     void reducedMotionChanged();
     void glassEnabledChanged();
+    void continuousRailChanged();
     void visualBoundsChanged();
     void pressed(int pointerId, qreal x, qreal y);
     void moved(int pointerId, qreal x, qreal y);
@@ -71,5 +75,6 @@ private:
     QVariantAnimation m_childAnimation, m_retireAnimation;
     bool m_reducedMotion = false, m_dirty = true, m_pointerActive = false;
     bool m_glassEnabled = false;
+    bool m_continuousRail = false;
     int m_pointerId = -1;
 };
