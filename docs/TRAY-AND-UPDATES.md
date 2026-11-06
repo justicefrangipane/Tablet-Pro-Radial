@@ -1,4 +1,4 @@
-# Tablet Pro Radial 0.3.5
+# Tablet Pro Radial 0.3.6
 
 The blue radial icon beside the Windows clock stays available while the editor
 and overlay are hidden. Windows may initially place it under the hidden-icons

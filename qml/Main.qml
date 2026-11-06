@@ -28,7 +28,7 @@ ApplicationWindow {
     palette.placeholderText: "#69778c"
     property color accent: "#91c5fa"
     property var iconNames: ["brush", "paintbrush", "eraser", "select", "lasso-select", "palette", "text", "type", "settings", "settings-2", "bold", "italic", "underline", "copy", "paste", "clipboard-paste", "scissors", "text-select", "arrow-left-to-line", "arrow-right-to-line", "undo", "undo-2", "redo", "redo-2", "save", "x", "trash-2", "ellipsis", "group"]
-    property var kindNames: ["group", "shortcut", "text", "empty"]
+    property var kindNames: ["group", "shortcut", "text", "empty", "modifier"]
     property var modifierNames: ["Ctrl", "Alt", "Shift", "Meta"]
     property bool quitAfterClose: false
 
@@ -515,6 +515,7 @@ ApplicationWindow {
                         }
                     }
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#293241" }
+                    StudioButton { Layout.fillWidth: true; text: "Use new default menu"; hint: "Load Brush, Eraser, Alt, Ctrl, Shift and Tools as a draft. Undo restores your menu."; onClicked: studio.useDefaultMenu() }
                     SectionLabel { text: studio.selectedKind === "group" ? "ADD TO SELECTED GROUP" : "ADD TO ROOT MENU"; font.pixelSize: 9; font.letterSpacing: 1 }
                     RowLayout {
                         Layout.fillWidth: true
@@ -604,7 +605,8 @@ ApplicationWindow {
                             onWidthChanged: studio.preview.setViewport(width, height)
                             onHeightChanged: studio.preview.setViewport(width, height)
                             Component.onCompleted: studio.preview.setViewport(width, height)
-                            onPressed: (pointerId, x, y) => studio.preview.pointerPressed(pointerId, x, y)
+                            onPressed: (pointerId, x, y) => { const id=previewSurface.hitRoot(x,y); if(id.length)studio.selectNode(id); studio.preview.pointerPressed(pointerId, x, y); }
+                            onEditRequested: (id) => studio.selectNode(id)
                             onMoved: (pointerId, x, y) => studio.preview.pointerMoved(pointerId, x, y)
                             onReleased: (pointerId, x, y) => studio.preview.pointerReleased(pointerId, x, y)
                             onCanceled: studio.preview.cancel()
@@ -679,13 +681,13 @@ ApplicationWindow {
                             enabled: studio.selectedId.length > 0
                             FieldLabel { text: "Name" }
                             StudioField { Layout.fillWidth: true; text: studio.selectedLabel; placeholderText: "Button name"; onEditingFinished: studio.renameSelected(text) }
-                            Label { Layout.fillWidth: true; text: "Names appear in the editor, never on the menu."; color: "#73869e"; font.pixelSize: 10; wrapMode: Text.WordWrap }
+                            Label { Layout.fillWidth: true; text: "Modifier keys show their key name on the menu."; color: "#73869e"; font.pixelSize: 10; wrapMode: Text.WordWrap }
                             FieldLabel { text: "Icon"; Layout.topMargin: 7 }
                             StudioCombo { Layout.fillWidth: true; model: editor.iconNames; currentIndex: Math.max(0, editor.iconNames.indexOf(studio.selectedIcon)); onActivated: studio.setIcon(currentText) }
                             FieldLabel { text: "Behavior"; Layout.topMargin: 7 }
                             StudioCombo {
                                 Layout.fillWidth: true
-                                model: ["Nested group", "Keyboard shortcut", "Type text", "Empty slot"]
+                                model: ["Nested group", "Keyboard shortcut", "Type text", "Empty slot", "Modifier key"]
                                 currentIndex: Math.max(0, editor.kindNames.indexOf(studio.selectedKind))
                                 onActivated: studio.setKind(editor.kindNames[currentIndex])
                             }
@@ -721,6 +723,18 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                visible: studio.selectedKind === "modifier"
+                                spacing: 10
+                                StudioCombo {
+                                    Layout.fillWidth: true
+                                    model: ["Alt", "Ctrl", "Shift"]
+                                    currentIndex: Math.max(0,model.indexOf(studio.selectedKey))
+                                    onActivated: studio.setModifierKey(currentText)
+                                }
+                                Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#bca58d"; font.pixelSize: 12; text: "Hold to use. Drag out to lock for this contact; lift to release. Double-tap to keep on; tap again to release." }
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true

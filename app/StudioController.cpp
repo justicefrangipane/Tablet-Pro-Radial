@@ -18,6 +18,7 @@ std::string newId() { return QUuid::createUuid().toString(QUuid::WithoutBraces).
 StudioController::StudioController(QObject* parent,const QString& configDirectory,bool runtimePreview):QObject(parent),configDirectory_(configDirectory.isEmpty()?QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation):configDirectory),platform_(this),stylus_(this),preview_(true,&platform_,this),runtime_(runtimePreview,&platform_,this),audio_(this),draft_(radial::defaultProfile()),applied_(draft_) {
     QFile previous(appliedPath());
     if(previous.open(QIODevice::ReadOnly)) { const auto result=decodeProfile(previous.readAll());if(result.profile)draft_=applied_=*result.profile;else error_="Saved profile could not be loaded: "+result.error; }
+    if(draft_==radial::legacyDefaultProfile()) draft_=applied_=radial::defaultProfile();
     for(const auto& slot:draft_.rootSlots)if(slot){selected_=q(*slot);break;}
     QSettings settings;setSoundEnabled(settings.value("sound",false).toBool());setReducedMotion(settings.value("reducedMotion",false).toBool());
     setBackdropEnabled(settings.value("backdrop",true).toBool());
@@ -38,7 +39,7 @@ const radial::Node* StudioController::selectedNode() const {const auto i=draft_.
 radial::Node* StudioController::selectedNode() {const auto i=draft_.nodes.find(selected_.toStdString());return i==draft_.nodes.end()?nullptr:&i->second;}
 QString StudioController::selectedLabel() const {auto*n=selectedNode();return n?q(n->label):QString{};}
 QString StudioController::selectedIcon() const {auto*n=selectedNode();return n?q(n->icon):QString{};}
-QString StudioController::selectedKind() const {auto*n=selectedNode();return !n?QString{}:n->kind==radial::NodeKind::Group?"group":n->action.kind==radial::ActionKind::Shortcut?"shortcut":n->action.kind==radial::ActionKind::Text?"text":"empty";}
+QString StudioController::selectedKind() const {auto*n=selectedNode();return !n?QString{}:n->kind==radial::NodeKind::Group?"group":n->action.kind==radial::ActionKind::Shortcut?"shortcut":n->action.kind==radial::ActionKind::Text?"text":n->action.kind==radial::ActionKind::Modifier?"modifier":"empty";}
 QString StudioController::selectedKey() const {auto*n=selectedNode();return n?q(n->action.key):QString{};}
 QString StudioController::selectedText() const {auto*n=selectedNode();return n?q(n->action.text):QString{};}
 QStringList StudioController::selectedModifiers() const {QStringList r;auto*n=selectedNode();if(!n)return r;for(const auto&pair:{std::pair{radial::Ctrl,"Ctrl"},{radial::Shift,"Shift"},{radial::Alt,"Alt"},{radial::Meta,"Meta"}})if(n->action.modifiers&pair.first)r<<pair.second;return r;}
@@ -57,13 +58,22 @@ void StudioController::selectNode(const QString&id){if(!draft_.nodes.contains(id
 void StudioController::renameSelected(const QString&label){if(!selectedNode())return;edit([&]{selectedNode()->label=label.left(80).toStdString();});}
 void StudioController::setIcon(const QString&icon){const QStringList allowed{"brush","eraser","select","palette","text","settings","bold","italic","copy","paste","undo","redo","group","paintbrush","lasso-select","type","settings-2","clipboard-paste","scissors","underline","text-select","arrow-left-to-line","arrow-right-to-line","ellipsis","undo-2","redo-2","save","x","trash-2"};if(!selectedNode()||!allowed.contains(icon))return;edit([&]{selectedNode()->icon=icon.toStdString();});}
 void StudioController::eraseBranch(const std::string&id){auto it=draft_.nodes.find(id);if(it==draft_.nodes.end())return;const auto children=it->second.children;draft_.nodes.erase(it);for(const auto&child:children)if(child)eraseBranch(*child);}
-void StudioController::setKind(const QString&kind){if(!selectedNode()||!QStringList{"group","shortcut","text","empty"}.contains(kind))return;if(selectedKind()==kind)return;edit([&]{auto*n=selectedNode();const auto children=n->children;for(const auto&id:children)if(id)eraseBranch(*id);n=selectedNode();n->children={};n->kind=kind=="group"?radial::NodeKind::Group:radial::NodeKind::Action;n->action={};if(n->kind==radial::NodeKind::Action){n->action.id=newId();n->action.kind=kind=="shortcut"?radial::ActionKind::Shortcut:kind=="text"?radial::ActionKind::Text:radial::ActionKind::None;if(kind=="shortcut")n->action.key="A";if(kind=="text")n->action.text="Text";}});}
+void StudioController::setKind(const QString&kind){if(!selectedNode()||!QStringList{"group","shortcut","text","empty","modifier"}.contains(kind))return;if(selectedKind()==kind)return;edit([&]{auto*n=selectedNode();const auto children=n->children;for(const auto&id:children)if(id)eraseBranch(*id);n=selectedNode();n->children={};n->kind=kind=="group"?radial::NodeKind::Group:radial::NodeKind::Action;n->action={};if(n->kind==radial::NodeKind::Action){n->action.id=newId();n->action.kind=kind=="shortcut"?radial::ActionKind::Shortcut:kind=="text"?radial::ActionKind::Text:kind=="modifier"?radial::ActionKind::Modifier:radial::ActionKind::None;if(kind=="shortcut")n->action.key="A";if(kind=="modifier")n->action.key="Ctrl";if(kind=="text")n->action.text="Text";}});}
 void StudioController::setShortcut(const QString&key,const QStringList&mods){
     if(!selectedNode()||selectedKind()!="shortcut")return;
     QSet<QString> seen;
     for(const auto&m:mods){if(!QStringList{"Ctrl","Shift","Alt","Meta"}.contains(m)||seen.contains(m)){error_="Unknown or duplicate shortcut modifier: "+m;emit changed();return;}seen.insert(m);}
     edit([&]{auto&a=selectedNode()->action;a.key=key.trimmed().toStdString();a.modifiers=0;for(const auto&m:mods)a.modifiers|=m=="Ctrl"?radial::Ctrl:m=="Shift"?radial::Shift:m=="Alt"?radial::Alt:m=="Meta"?radial::Meta:0;});
 }
+void StudioController::setModifierKey(const QString& key){
+    if(selectedKind()!="modifier" || !QStringList{"Alt","Ctrl","Shift"}.contains(key))return;
+    edit([&]{auto*n=selectedNode();n->action.key=key.toStdString();n->label=n->action.key;n->icon=n->action.key;});
+}
+void StudioController::editButton(const QString& id){
+    if(!draft_.nodes.contains(id.toStdString()))return;
+    selectNode(id);showEditor();
+}
+void StudioController::useDefaultMenu(){edit([&]{draft_=radial::defaultProfile();selected_="brush";});}
 void StudioController::setText(const QString&text){if(!selectedNode()||selectedKind()!="text")return;edit([&]{selectedNode()->action.text=text.left(1024).toStdString();});}
 void StudioController::addChild(int slot,bool group){if(slot<0||slot>=6)return;auto*n=selectedNode();auto* entries=n&&n->kind==radial::NodeKind::Group?&n->children:&draft_.rootSlots;if((*entries)[slot]){error_="That slot is occupied. Select it to edit, move, or remove it.";emit changed();return;}edit([&]{radial::Node added;added.id=newId();added.label=group?"New group":"New action";added.icon=group?"group":"brush";added.kind=group?radial::NodeKind::Group:radial::NodeKind::Action;if(!group){added.action.id=newId();added.action.kind=radial::ActionKind::Shortcut;added.action.key="B";}(*entries)[slot]=added.id;selected_=q(added.id);draft_.nodes.emplace(added.id,std::move(added));});}
 void StudioController::removeSelected(){if(!selectedNode())return;edit([&]{const auto id=selected_.toStdString();for(auto&entry:draft_.rootSlots)if(entry&&*entry==id)entry.reset();for(auto&[_,n]:draft_.nodes)for(auto&entry:n.children)if(entry&&*entry==id)entry.reset();eraseBranch(id);selected_.clear();});}

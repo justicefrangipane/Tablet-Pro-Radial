@@ -4,6 +4,8 @@
 #include <QPointF>
 #include <QVariantList>
 #include <QVariantAnimation>
+#include <QElapsedTimer>
+#include <QStringList>
 #include <optional>
 
 namespace tabletpro {
@@ -19,6 +21,7 @@ class MenuSession : public QObject {
     Q_PROPERTY(bool active READ active NOTIFY stateChanged)
     Q_PROPERTY(bool transitioning READ transitioning NOTIFY stateChanged)
     Q_PROPERTY(QString status READ status NOTIFY stateChanged)
+    Q_PROPERTY(QStringList heldModifiers READ heldModifiers NOTIFY stateChanged)
     Q_PROPERTY(int durationMs READ durationMs WRITE setDurationMs NOTIFY preferencesChanged)
 public:
     explicit MenuSession(bool simulation, WindowPlatform* platform, QObject* parent = nullptr);
@@ -31,7 +34,8 @@ public:
     qreal dockProgress() const { return progress_; }
     bool docked() const { return docked_; }
     QPointF radialCenter() const;
-    bool active() const { return engine_.active() || pendingDispatch_; }
+    bool active() const { return engine_.active() || pendingDispatch_ || modifierPointer_.has_value(); }
+    QStringList heldModifiers() const { return heldModifiers_; }
     bool transitioning() const { return animation_.state() == QAbstractAnimation::Running; }
     QString status() const { return status_; }
     int durationMs() const { return durationMs_; }
@@ -44,6 +48,7 @@ public:
     Q_INVOKABLE void pointerMoved(int pointerId, qreal x, qreal y);
     Q_INVOKABLE void pointerReleased(int pointerId, qreal x, qreal y);
     Q_INVOKABLE void cancel();
+    Q_INVOKABLE void releaseModifiers();
 signals:
     void geometryChanged();
     void stateChanged();
@@ -64,6 +69,16 @@ private:
     quintptr invocationTarget_ = 0, gestureTarget_ = 0;
     QString previousSelection_;
     bool pendingDispatch_ = false;
+    std::optional<int> modifierPointer_;
+    QString modifierKey_, modifierNode_, lastTapKey_;
+    QStringList heldModifiers_, latchedModifiers_;
+    QPointF modifierStart_;
+    QElapsedTimer modifierClock_;
+    qint64 pressedAt_ = 0, lastTapAt_ = -1000;
+    bool modifierDragged_ = false, releasingLatch_ = false;
+    bool beginModifier(const radial::Node& node, int pointerId, QPointF point, bool fromFan = false);
+    bool holdModifier(const QString& key, bool held);
+    QString modifierState(const radial::Node& node) const;
     QString pendingDescription_;
     std::size_t previousDepth_ = 0;
     void updateView();

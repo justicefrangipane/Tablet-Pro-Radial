@@ -41,7 +41,7 @@ QByteArray encodeProfile(const radial::Profile& profile) {
             QJsonArray mods;
             for (const auto& pair : {std::pair{radial::Ctrl,"Ctrl"}, {radial::Shift,"Shift"}, {radial::Alt,"Alt"}, {radial::Meta,"Meta"}})
                 if (node.action.modifiers & pair.first) mods.append(pair.second);
-            const char* type = node.action.kind == radial::ActionKind::Shortcut ? "shortcut" : node.action.kind == radial::ActionKind::Text ? "text" : "none";
+            const char* type = node.action.kind == radial::ActionKind::Shortcut ? "shortcut" : node.action.kind == radial::ActionKind::Text ? "text" : node.action.kind == radial::ActionKind::Modifier ? "modifier" : "none";
             item["action"] = QJsonObject{{"id", QString::fromStdString(node.action.id)}, {"type", type}, {"key", QString::fromStdString(node.action.key)}, {"modifiers", mods}, {"text", QString::fromStdString(node.action.text)}};
         }
         nodes.append(item);
@@ -82,6 +82,7 @@ DecodedProfile decodeProfile(const QByteArray& bytes) {
             const auto type = action["type"].toString();
             if (type == "shortcut") node.action.kind = radial::ActionKind::Shortcut;
             else if (type == "text") node.action.kind = radial::ActionKind::Text;
+            else if (type == "modifier") node.action.kind = radial::ActionKind::Modifier;
             else if (type == "none") node.action.kind = radial::ActionKind::None;
             else return fail("Unsupported action type: " + type + ". The file was not changed.");
             if (!action["key"].isString() || !action["text"].isString() || !action["modifiers"].isArray()) return fail("Action key, text, or modifiers have invalid types.");

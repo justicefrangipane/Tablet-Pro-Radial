@@ -36,7 +36,7 @@ QColor withAlpha(QColor c, double a) { c.setAlphaF(clamp(a)); return c; }
 QPointF polar(double r, double a) { return {r*std::cos(a),r*std::sin(a)}; }
 
 struct Button {
-    QString id, icon;
+    QString id, icon, modifierState, caption;
     QColor color;
     QPointF center, radialCenter, dock, from;
     double angle=0;
@@ -48,6 +48,7 @@ Button readButton(const QVariant &value, int index) {
     const auto v=value.toMap(); Button b;
     b.id=v.value("id").toString(); b.icon=v.value("icon","circle").toString();
     static const std::array<const char*,6> colors={"#749ac6","#9b8bbb","#72b3ac","#c59e7f","#899ac5","#b28ea9"};
+    b.modifierState=v.value("modifierState").toString();b.caption=v.value("caption").toString();
     b.slot=std::clamp(v.value("slot",index).toInt(),0,5);
     b.color=QColor(v.value("color",colors[b.slot]).toString());
     if(!b.color.isValid()) b.color=QColor(colors[b.slot]);
@@ -98,7 +99,22 @@ void paintIcon(QPainter &p, const QString &name, QPointF center, QColor ink=QCol
     p.save(); p.translate(center); p.scale(.92,.92);
     p.setPen(QPen(ink,1.65,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin)); p.setBrush(Qt::NoBrush);
     QPainterPath path;
-    if(name.contains("brush") || name=="pen" || name=="pencil") {
+    if(name=="Alt" || name=="Ctrl" || name=="Shift") {
+        QFont font("Segoe UI");font.setPixelSize(12);font.setWeight(QFont::DemiBold);p.setFont(font);
+        p.drawText(QRectF(-21,-11,42,22),Qt::AlignCenter,name);
+    } else if(name=="dock") {
+        p.drawLine(-8,-8,-8,8);p.drawLine(-3,0,9,0);p.drawLine(-3,0,1,-4);p.drawLine(-3,0,1,4);
+    } else if(name=="edit") {
+        path.moveTo(-8,8);path.lineTo(-5,1);path.lineTo(4,-8);path.lineTo(8,-4);path.lineTo(-1,5);path.closeSubpath();p.drawPath(path);
+    } else if(name=="sound") {
+        path.moveTo(-9,-3);path.lineTo(-5,-3);path.lineTo(0,-8);path.lineTo(0,8);path.lineTo(-5,3);path.lineTo(-9,3);path.closeSubpath();p.drawPath(path);p.drawArc(QRectF(-4,-7,14,14),-60*16,120*16);
+    } else if(name=="glass") {
+        path.moveTo(0,-8);path.lineTo(9,-3);path.lineTo(0,2);path.lineTo(-9,-3);path.closeSubpath();p.drawPath(path);p.drawLine(-8,2,0,7);p.drawLine(0,7,8,2);
+    } else if(name=="hide") {
+        path.moveTo(-9,0);path.quadTo(0,-11,9,0);path.quadTo(0,11,-9,0);p.drawPath(path);p.drawEllipse(QPointF(0,0),3,3);p.drawLine(-8,-8,8,8);
+    } else if(name=="quit") {
+        p.drawLine(0,-9,0,0);p.drawArc(QRectF(-8,-8,16,16),135*16,270*16);
+    } else if(name.contains("brush") || name=="pen" || name=="pencil") {
         path.moveTo(-2,3); path.lineTo(7,-8); path.quadTo(10,-10,9,-6); path.lineTo(2,5); path.closeSubpath(); p.drawPath(path);
         path=QPainterPath(); path.moveTo(-2,3); path.cubicTo(-8,2,-4,8,-10,8); path.cubicTo(-4,11,2,9,2,5); p.drawPath(path);
     } else if(name=="eraser") {
@@ -265,6 +281,17 @@ struct RenderNode : QSGNode {
 };
 } // namespace
 
+namespace {
+void paintModifier(QPainter& p,const Button& b,QPointF center){
+    if(b.modifierState.isEmpty())return;
+    p.save();p.translate(center+QPointF(0,b.caption.isEmpty()?14:-21));p.setPen(QPen(QColor("#ffe5bd"),1));p.setBrush(QColor("#ffe5bd"));
+    if(b.modifierState=="latched"){
+        p.setBrush(Qt::NoBrush);p.drawRoundedRect(QRectF(-3,-2,6,5),1,1);p.drawArc(QRectF(-2,-6,4,6),0,180*16);
+    }else if(b.modifierState=="dragged"){p.drawRoundedRect(QRectF(-5,-1,10,2),1,1);}
+    else p.drawEllipse(QPointF(0,0),1.8,1.8);
+    p.restore();
+}
+}
 struct RadialSurface::State {
     std::vector<Button> buttons,children,retiring;
     std::vector<Particle> particles;
@@ -272,7 +299,7 @@ struct RadialSurface::State {
     std::vector<double> ends;
     QImage atlas;
     bool railStyle = false;
-    void rebuild(const QVariantList &roots,const QVariantList &childList,const QVariantList &retiringList,bool glassEnabled,bool continuousRail) {
+    void rebuild(const QVariantList &roots,const QVariantList &childList,const QVariantList &retiringList,bool glassEnabled,bool continuousRail,bool bronzeTheme) {
         railStyle=continuousRail;
         buttons.clear();children.clear();retiring.clear();particles.clear();childParticles.clear();ends.clear();
         for(int i=0;i<roots.size();i++)buttons.push_back(readButton(roots[i],i));
@@ -285,12 +312,22 @@ struct RadialSurface::State {
         const auto drawDock=[&](Button &b,QRect rect){
             ap.save();ap.translate(rect.topLeft());QLinearGradient gradient(0,0,44,44);gradient.setColorAt(0,withAlpha(mix(QColor("#303b4f"),b.color,.4),glassEnabled?.48:1));gradient.setColorAt(1,withAlpha(mix(QColor("#303b4f"),b.color,.16),glassEnabled?.60:1));
             if(!continuousRail){ap.setBrush(gradient);ap.setPen(QPen(withAlpha(b.color,.62),.8));ap.drawRoundedRect(QRectF(.5,.5,43,43),11,11);}
-            paintIcon(ap,b.icon,{22,22});ap.restore();
+            if(!b.modifierState.isEmpty()){ap.setBrush(QColor("#88613d"));ap.setPen(QPen(QColor("#ffd08a"),1));ap.drawRoundedRect(QRectF(2,2,40,40),9,9);}
+            paintIcon(ap,b.icon,{22,22},b.modifierState.isEmpty()?QColor("#edf3ff"):QColor("#ffe5bd"));
+            paintModifier(ap,b,{22,22});ap.restore();
         };
         for(int i=0;i<int(buttons.size());i++){
             auto &b=buttons[i];b.sourceAtlas=slot(i*2,256);b.targetAtlas=slot(i*2+1,44);
             ap.save();ap.translate(b.sourceAtlas.topLeft()+QPoint(128,128));const auto path=wedge(b.angle,pi/3);
-            QLinearGradient gradient(-96,-96,96,96);gradient.setColorAt(0,withAlpha(mix(QColor("#303b4f"),b.color,.43),glassEnabled?.42:1));gradient.setColorAt(1,withAlpha(mix(QColor("#303b4f"),b.color,.15),glassEnabled?.56:1));ap.setBrush(gradient);ap.setPen(QPen(withAlpha(b.color,.62),.8));ap.drawPath(path);paintIcon(ap,b.icon,polar(iconRadius,b.angle));ap.restore();drawDock(b,b.targetAtlas);
+            QLinearGradient gradient(-96,-96,96,96);
+            const bool held=!b.modifierState.isEmpty();
+            gradient.setColorAt(0,bronzeTheme?withAlpha(QColor(held?"#a47747":"#75543b"),glassEnabled?.84:1):withAlpha(mix(QColor("#303b4f"),b.color,.43),glassEnabled?.42:1));
+            gradient.setColorAt(1,bronzeTheme?withAlpha(QColor(held?"#69452c":"#382920"),glassEnabled?.90:1):withAlpha(mix(QColor("#303b4f"),b.color,.15),glassEnabled?.56:1));
+            ap.setBrush(gradient);ap.setPen(QPen(bronzeTheme?QColor(held?"#ffd08a":"#ad8055"):withAlpha(b.color,.62),.8));ap.drawPath(path);
+            const auto center=polar(iconRadius,b.angle);
+            paintIcon(ap,b.icon,center+QPointF(0,b.caption.isEmpty()?0:-6),bronzeTheme?QColor("#ffe5bd"):QColor("#edf3ff"));
+            if(!b.caption.isEmpty()){QFont font("Segoe UI");font.setPixelSize(9);font.setWeight(QFont::Medium);ap.setFont(font);ap.setPen(QColor("#ffe5bd"));ap.drawText(QRectF(center.x()-23,center.y()+7,46,13),Qt::AlignCenter,b.caption);}
+            paintModifier(ap,b,center);ap.restore();drawDock(b,b.targetAtlas);
         }
         for(int i=0;i<int(children.size());i++){auto &b=children[i];b.targetAtlas=slot(int(buttons.size())*2+i,childSpriteSize*childAtlasScale);paintChild(ap,b,b.targetAtlas,glassEnabled);}
         for(int i=0;i<int(retiring.size());i++){auto &b=retiring[i];b.targetAtlas=slot(int(buttons.size())*2+int(children.size())+i,childSpriteSize*childAtlasScale);paintChild(ap,b,b.targetAtlas,glassEnabled);}
@@ -333,7 +370,7 @@ struct RadialSurface::State {
 };
 
 RadialSurface::RadialSurface(QQuickItem *parent):QQuickPaintedItem(parent),m_state(std::make_unique<State>()) {
-    setFillColor(Qt::transparent);setAntialiasing(true);setFlag(ItemHasContents,true);setAcceptedMouseButtons(Qt::LeftButton);setAcceptTouchEvents(true);setKeepMouseGrab(true);setKeepTouchGrab(true);
+    setFillColor(Qt::transparent);setAntialiasing(true);setFlag(ItemHasContents,true);setAcceptedMouseButtons(Qt::LeftButton|Qt::RightButton);setAcceptTouchEvents(true);setKeepMouseGrab(true);setKeepTouchGrab(true);
     m_childAnimation.setDuration(330);m_childAnimation.setStartValue(0.0);m_childAnimation.setEndValue(1.0);
     m_retireAnimation.setDuration(280);m_retireAnimation.setStartValue(0.0);m_retireAnimation.setEndValue(1.0);
     connect(&m_childAnimation,&QVariantAnimation::valueChanged,this,[this](const QVariant &value){m_childReveal=value.toReal();update();});
@@ -354,7 +391,7 @@ void RadialSurface::setChildButtons(const QVariantList &v){
     bool atlasChanged=branchChanged;
     if(!atlasChanged)for(int i=0;i<v.size();i++){
         const auto before=m_children[i].toMap(),after=v[i].toMap();
-        for(const auto *key:{"icon","color","axis","group"})if(before.value(key)!=after.value(key)){atlasChanged=true;break;}
+        for(const auto *key:{"icon","color","axis","group","modifierState"})if(before.value(key)!=after.value(key)){atlasChanged=true;break;}
     }
     if(branchChanged){
         m_childAnimation.stop();
@@ -379,6 +416,7 @@ void RadialSurface::setChildButtons(const QVariantList &v){
 }
 void RadialSurface::setSelectedId(const QString &v){if(m_selectedId==v)return;m_selectedId=v;emit selectedIdChanged();update();}
 void RadialSurface::setGlassEnabled(bool v){if(m_glassEnabled==v)return;m_glassEnabled=v;m_dirty=true;emit glassEnabledChanged();update();}
+void RadialSurface::setBronzeTheme(bool v){if(m_bronzeTheme==v)return;m_bronzeTheme=v;m_dirty=true;emit bronzeThemeChanged();update();}
 void RadialSurface::setContinuousRail(bool v){if(m_continuousRail==v)return;m_continuousRail=v;m_dirty=true;emit continuousRailChanged();update();}
 void RadialSurface::setDockProgress(qreal v){v=clamp(v);if(qFuzzyCompare(m_dockProgress,v))return;m_dockProgress=v;emit dockProgressChanged();update();}
 void RadialSurface::setReducedMotion(bool v){
@@ -552,7 +590,7 @@ void paintTextures(QPainter &p,const Textures &vertices,const QImage &atlas,doub
 
 bool RadialSurface::prepareGeometry() {
     const bool rebuild=m_dirty;
-    if(rebuild){m_state->rebuild(m_buttons,m_children,m_retiringChildren,m_glassEnabled,m_continuousRail);m_dirty=false;}
+    if(rebuild){m_state->rebuild(m_buttons,m_children,m_retiringChildren,m_glassEnabled,m_continuousRail,m_bronzeTheme);m_dirty=false;}
     else for(int i=0;i<int(m_state->children.size());i++){
         const auto atlasRect=m_state->children[i].targetAtlas;
         m_state->children[i]=readChild(m_children[i],i);m_state->children[i].targetAtlas=atlasRect;
@@ -585,7 +623,9 @@ void RadialSurface::paint(QPainter *painter) {
     paintTextures(*painter,frame.solids,m_state->atlas);paintColors(*painter,frame.outlines);
 }
 
+void RadialSurface::mouseDoubleClickEvent(QMouseEvent *e){mousePressEvent(e);}
 void RadialSurface::mousePressEvent(QMouseEvent *e){
+    if(!m_pointerActive && e->button()==Qt::RightButton){const auto id=hitRoot(e->position().x(),e->position().y());if(!id.isEmpty()){e->accept();emit editRequested(id);return;}}
     if(m_pointerActive||e->button()!=Qt::LeftButton){e->ignore();return;}
     m_pointerActive=true;m_pointerId=-1;e->accept();emit pressed(m_pointerId,e->position().x(),e->position().y());
 }

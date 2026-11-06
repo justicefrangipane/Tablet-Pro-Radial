@@ -24,7 +24,7 @@ An action node has `kind: "action"` and one `action` object:
 }
 ```
 
-Action types are `shortcut`, `text`, and `none`. Modifiers are unique members of `Ctrl`, `Shift`, `Alt`, and `Meta`. Unused payload fields must be empty. A text action supplies `text`, with an empty key and modifier array. The model validates key tokens; Apply additionally checks the platform adapter's supported subset. There is no embedded executable code.
+Action types are `shortcut`, `text`, `modifier`, and `none`. A `modifier` action uses `key: "Alt"`, `"Ctrl"`, or `"Shift"`, with empty `text` and `modifiers` fields. It holds during contact, keeps holding when dragged out until lift, and latches on a double tap until the next tap. Its key name is visible on the menu. Runtime held state is never serialized. Older builds reject this new action type without changing the file. Modifiers are unique members of `Ctrl`, `Shift`, `Alt`, and `Meta`. Unused payload fields must be empty. A text action supplies `text`, with an empty key and modifier array. The model validates key tokens; Apply additionally checks the platform adapter's supported subset. There is no embedded executable code.
 
 A group has `kind: "group"` and `slots`, with no action payload. An action cannot also have child slots. Branches can nest to the core's four-level limit. Files larger than 1 MiB or containing more than 256 nodes are rejected before becoming a draft.
 

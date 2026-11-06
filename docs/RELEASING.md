@@ -13,7 +13,7 @@ Official repository: https://github.com/justicefrangipane/Tablet-Pro-Radial
 .\scripts\build-release.ps1 -RuntimeTemplate 'C:\path\to\verified\Tablet-Pro-Radial-0.3.4' -Python 'python'
 ```
 
-The script refuses to overwrite an existing version. It builds and runs all six CTest suites, deploys Qt, creates the configured installer and source archive, verifies every extracted file, and runs editor/runtime smoke checks with Qt removed from PATH. Output is in `dist/`; screenshots are in `build/windows/release-smoke/`.
+The script refuses to overwrite an existing version. It builds and runs all seven Windows CTest suites, deploys Qt, creates the configured installer and source archive, verifies every extracted file, and runs editor/runtime smoke checks with Qt removed from PATH. Output is in `dist/`; screenshots are in `build/windows/release-smoke/`.
 
 The installer contains the matching source archive and third-party notices. Review the source and contents before publication. Exclude private settings, credentials, local handoff notes, and unrelated files. The HID library is the supplied Tablet Pro binary; its provenance is recorded under `vendor/tabletpro/`.
 
@@ -29,7 +29,7 @@ git push origin main
 This uploads a **draft** release and verifies every asset's uploaded state, byte count, and GitHub SHA-256 digest. To upload, verify, and publish in the same invocation, add `-Publish`. To publish a previously reviewed draft:
 
 ```powershell
-gh release edit v0.3.5 --repo justicefrangipane/Tablet-Pro-Radial --draft=false --latest
+gh release edit v0.3.6 --repo justicefrangipane/Tablet-Pro-Radial --draft=false --latest
 ```
 
 Replace the example tag with the version just built. Never use fake newer releases to test the production feed. The updater requires a public stable `vMAJOR.MINOR.PATCH` release and the exact installer name `Tablet-Pro-Radial-MAJOR.MINOR.PATCH-Windows-x64-Setup.exe`.

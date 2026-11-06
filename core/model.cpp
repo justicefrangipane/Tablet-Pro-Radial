@@ -113,6 +113,11 @@ std::vector<ValidationIssue> validate(const Profile& profile) {
             if (!action.key.empty() || action.modifiers)
                 issue("text_shortcut", path + ".action", "Text cannot also specify a shortcut.");
             break;
+        case ActionKind::Modifier:
+            if ((action.key != "Alt" && action.key != "Ctrl" && action.key != "Shift") ||
+                !action.text.empty() || action.modifiers)
+                issue("modifier_payload", path + ".action", "Choose Alt, Ctrl, or Shift without another payload.");
+            break;
         default:
             issue("action_kind", path + ".action.kind", "Unknown action kind.");
         }
@@ -145,7 +150,7 @@ std::vector<ValidationIssue> validate(const Profile& profile) {
     return issues;
 }
 
-Profile defaultProfile() {
+Profile legacyDefaultProfile() {
     Profile profile;
     profile.id = "tablet-pro.default";
     profile.name = "Artist tools";
@@ -188,6 +193,24 @@ Profile defaultProfile() {
     const auto settings = group("settings", "Settings", "settings-2", {
         undo, redo, save, std::nullopt, escape, remove});
     profile.rootSlots = {brush, eraser, select, color, text, settings};
+    return profile;
+}
+
+Profile defaultProfile() {
+    auto profile = legacyDefaultProfile();
+    for (const auto* key : {"Alt", "Ctrl", "Shift"}) {
+        Node node;
+        node.id = std::string("modifier.") + key;
+        node.label = key; node.icon = key;
+        node.action = {"command." + node.id, ActionKind::Modifier, key, {}, 0};
+        profile.nodes.emplace(node.id, node);
+    }
+    Node tools;
+    tools.id = "tools"; tools.label = "Tools"; tools.icon = "group";
+    tools.kind = NodeKind::Group;
+    tools.children = {"select", "color", "text", "settings", std::nullopt, std::nullopt};
+    profile.nodes.emplace(tools.id, tools);
+    profile.rootSlots = {"brush", "eraser", "modifier.Alt", "modifier.Ctrl", "modifier.Shift", "tools"};
     return profile;
 }
 

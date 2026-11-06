@@ -1,12 +1,15 @@
 # Open the new radial menu
 
-This is the Windows x64 development build of Tablet Pro Radial 0.3.5. It contains Qt and the runtime dependencies used by the supplied pen-input library; no Qt installation or administrator setup is required.
+This is the Windows x64 development build of Tablet Pro Radial 0.3.6. It contains Qt and the runtime dependencies used by the supplied pen-input library; no Qt installation or administrator setup is required.
 
 1. Close the original Tablet Pro Studio and the 0.2 radial while testing 0.3. The installer leaves 0.2 available.
 2. Download the latest installer from [GitHub Releases](https://github.com/justicefrangipane/Tablet-Pro-Radial/releases/latest), then run `Tablet-Pro-Radial-VERSION-Windows-x64-Setup.exe` and follow the installer. Use its Start menu shortcuts to open the floating menu, docked rail, or editor. Use one copy at a time; quit the current copy before opening a different mode.
 3. Hover with the pen, then press its first side button. A press hides/shows the menu; holding does not repeatedly toggle it. The menu remembers its floating/docked state while running.
 4. Select an action by pressing its icon and releasing. For a group such as Text, press and drag outward to reveal six children, then release over one. Return through the parent to backtrack.
-5. The wheel center contains **Send to dock**, **Edit**, and **•••**. In docked mode, tap the top **•••** to switch the 44 px rail from drawing tools to settings. Its bronze background and warm ivory icons distinguish settings from tools. Choose **Send to radial**, **Edit**, **Sound**, **Glass**, **Hide**, or **Quit**, or tap the back arrow to return to drawing. Edit opens the profile editor; **Pen button** opens input setup.
+5. Tap **Menu** in the bronze wheel center. The outer buttons become Dock, Edit, Sound, Glass, Hide, and Quit without extending the wheel. **Back** restores the tools. The docked 44 px rail uses its top **•••** control for the same settings.
+6. Choose **Edit**, then tap a button to open its inspector. Right-clicking a button also edits it directly. Choose **Modifier key** to assign Alt, Ctrl, or Shift; **Apply draft** activates the change. **Pen button** in the editor opens input setup.
+
+The default main menu includes **Alt, Ctrl, and Shift**. Press and hold for a momentary modifier. Drag out to lock it for that contact, then lift to release. Double-tap to latch it after lifting; tap again to release. A dot shows a hold, a short bar shows a contact lock, and a small padlock shows a latched key. Hiding the menu, editing, target changes, or exit release owned modifiers. Customized menus are preserved; **Use new default menu** loads the new layout as an undoable draft.
 
 For future versions, open **Updates** from the tray or editor. The official repository is already configured. Choose **Check now**, **Download update**, then **Install update**.
 
@@ -30,12 +33,12 @@ Command-line modes are `--radial` (default), `--docked`, and `--editor`. Setting
 
 To try the supplied sound-enabled preset, Open `examples/Test.radial.json` and select Apply draft. Saving a file and applying it to the runtime are separate operations.
 
-Buttons wait briefly for pen-generated mouse buttons and driver shortcut keys to release before sending. If they remain held for 700 ms, the command is canceled with an explanation. Changing the target application or hiding the menu also cancels pending input.
+Shortcut and text buttons wait briefly for pen-generated mouse buttons and driver shortcut keys to release before sending. If they remain held for 700 ms, the command is canceled with an explanation. Changing the target application or hiding the menu also cancels pending input.
 
 Glass uses a Windows Composition host-backdrop brush with clipped menu geometry, translucent fills, and crisp icons. The 0.3.2 Glass fix is retained.
 
 ## Validation limits
 
-The release build script runs the six Windows test suites, verifies the installer payload, and runs the packaged editor/runtime smoke checks without Qt on PATH. Physical pen input, focus behavior in drawing programs, mixed-DPI displays, and installation on another computer require device testing. The installer is unsigned.
+The release build script runs the seven Windows test suites, verifies the installer payload, and runs the packaged editor/runtime smoke checks without Qt on PATH. Native modifier injection is tested against a disposable receiver. Physical pen input, focus behavior in drawing programs, mixed-DPI displays, and installation on another computer require device testing. The installer is unsigned.
 
 The supplied Wacom bridge was not connected because it explicitly requires Studio to own keyboard focus. Direct Wacom background capture needs a different integration; use the driver shortcut route for this build.

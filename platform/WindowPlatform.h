@@ -46,6 +46,9 @@ public:
     // Silent cancellation. releaseTarget(), a new capture, and hiding the overlay
     // also discard queued input. A canceled action can never execute later.
     Q_INVOKABLE void cancelQueuedAction();
+    bool setModifierHeld(const QString& key, bool held, quintptr target = 0);
+    void releaseModifiers();
+    QStringList heldModifiers() const { return m_heldModifiers; }
     bool registerToggleHotkey();
     void unregisterToggleHotkey();
 
@@ -59,6 +62,7 @@ signals:
     void shortcutSimulated(const QString& key, const QStringList& modifiers);
     void textSimulated(const QString& text);
     void actionDispatchFinished(bool success, const QString& error);
+    void modifiersReleased();
 
 private:
     struct QueuedAction {
@@ -90,6 +94,9 @@ private:
     quint32 m_targetThread = 0;
     // Only key-downs successfully inserted by this adapter may enter this ledger.
     QVector<quint32> m_ownedKeys;
+    QStringList m_heldModifiers;
+    quintptr m_modifierTarget = 0;
+    quint32 m_modifierProcess = 0, m_modifierThread = 0;
     bool m_hotkeyRegistered = false;
     bool m_dispatching = false;
 };

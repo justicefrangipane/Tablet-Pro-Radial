@@ -69,6 +69,9 @@ public:
     Q_INVOKABLE void setKind(const QString& kind);
     Q_INVOKABLE void setShortcut(const QString& key,const QStringList& modifiers);
     Q_INVOKABLE void setText(const QString& text);
+    Q_INVOKABLE void setModifierKey(const QString& key);
+    Q_INVOKABLE void editButton(const QString& id);
+    Q_INVOKABLE void useDefaultMenu();
     Q_INVOKABLE void addChild(int slot,bool group);
     Q_INVOKABLE void removeSelected();
     Q_INVOKABLE void moveSelected(int delta);

@@ -24,30 +24,33 @@ Window {
     readonly property color settingsPressed: "#89613d"
     readonly property color settingsSelected: "#604329"
     onMenuOpenChanged: resultMessage=""
-    component OptionSwitch: Switch {
-        id: option
-        width: 178; height: 34
-        focusPolicy: Qt.NoFocus
-        rightPadding: 48
-        indicator: Rectangle {
-            x: option.width-width; y: (option.height-height)/2
-            width: 38; height: 22; radius: 11
-            color: option.checked ? "#94693e" : "#3c2e25"
-            border.color: option.checked ? "#e3b47c" : "#866649"
-            Rectangle {
-                x: option.checked ? 19 : 3; y: 3; width: 16; height: 16; radius: 8
-                color: option.checked ? "#ffe5bd" : "#baa58e"
-                Behavior on x { NumberAnimation { duration: studio.reducedMotion ? 0 : 130; easing.type: Easing.OutCubic } }
-            }
-        }
-        contentItem: Text { text: option.text; color: overlay.settingsInk; verticalAlignment: Text.AlignVCenter; font.pixelSize: 12 }
+    property bool editingButtons: false
+    property string editPressedId: ""
+    function activateOption(key) {
+        if(key==="sound"){studio.soundEnabled=!studio.soundEnabled;return;}
+        if(key==="glass"){studio.backdropEnabled=!studio.backdropEnabled;return;}
+        menuOpen=false
+        if(key==="dock" || key==="radial")studio.runtime.toggleDock()
+        else if(key==="edit"){studio.runtime.releaseModifiers();editingButtons=true;}
+        else if(key==="hide")studio.hideOverlay()
+        else {studio.showEditor();quitRequested();}
+    }
+    function options() {
+        const keys=["dock","edit","sound","glass","hide","quit"]
+        const labels=["Dock","Edit","Sound","Glass","Hide","Quit"]
+        return keys.map(function(key,i){
+            const angle=-Math.PI/2+i*Math.PI/3
+            return {id:key,icon:key,caption:labels[i],slot:i,color:"#ad8055",angle:angle,
+                modifierState:(key==="sound"&&studio.soundEnabled)||(key==="glass"&&studio.backdropEnabled)?"held":"",
+                cx:studio.runtime.radialCenter.x+70*Math.cos(angle),cy:studio.runtime.radialCenter.y+70*Math.sin(angle)}
+        })
     }
     onVisibleChanged: {
-        menuOpen = false; resultMessage = "";
+        menuOpen = false; editingButtons=false; resultMessage = "";
         if (visible) studio.runtime.setViewport(surface.width,surface.height);
         else studio.runtime.cancel();
     }
-    Shortcut { sequence: "Escape"; onActivated: { overlay.menuOpen=false; studio.runtime.cancel(); } }
+    Shortcut { sequence: "Escape"; onActivated: { overlay.menuOpen=false;overlay.editingButtons=false; studio.runtime.cancel(); } }
     Connections {
         target: studio.runtime
         function onActionReported(description) { overlay.resultMessage=description; resultTimer.restart(); }
@@ -97,15 +100,44 @@ Window {
         reducedMotion: studio.reducedMotion
         glassEnabled: studio.backdropEnabled
         continuousRail: true
-        visible: !(overlay.railMode && overlay.menuOpen)
+        bronzeTheme: true
+        visible: !overlay.menuOpen
         enabled: visible
         onWidthChanged: studio.runtime.setViewport(width,height)
         onHeightChanged: studio.runtime.setViewport(width,height)
         Component.onCompleted: studio.runtime.setViewport(width,height)
-        onPressed: (pointerId,x,y) => { overlay.menuOpen=false; overlay.resultMessage=""; studio.runtime.pointerPressed(pointerId,x,y); }
-        onMoved: (pointerId,x,y) => studio.runtime.pointerMoved(pointerId,x,y)
-        onReleased: (pointerId,x,y) => studio.runtime.pointerReleased(pointerId,x,y)
+        onPressed: (pointerId,x,y) => {
+            overlay.resultMessage=""
+            if(overlay.editingButtons){overlay.editPressedId=surface.hitRoot(x,y);return;}
+            studio.runtime.pointerPressed(pointerId,x,y)
+        }
+        onEditRequested: (id) => studio.editButton(id)
+        onMoved: (pointerId,x,y) => { if(!overlay.editingButtons)studio.runtime.pointerMoved(pointerId,x,y); }
+        onReleased: (pointerId,x,y) => {
+            if(overlay.editingButtons){
+                const id=surface.hitRoot(x,y)
+                if(id.length && id===overlay.editPressedId){overlay.editingButtons=false;studio.editButton(id);}
+                overlay.editPressedId="";return;
+            }
+            studio.runtime.pointerReleased(pointerId,x,y)
+        }
         onCanceled: studio.runtime.cancel()
+    }
+    RadialSurface {
+        id: settingsSurface
+        objectName: "settingsSurface"
+        anchors.fill: parent
+        visible: overlay.menuOpen && !overlay.railMode
+        enabled: visible
+        buttons: overlay.options()
+        bronzeTheme: true
+        glassEnabled: studio.backdropEnabled
+        reducedMotion: studio.reducedMotion
+        property string pressedId: ""
+        onPressed: (pointerId,x,y) => { pressedId=hitRoot(x,y);selectedId=pressedId; }
+        onMoved: (pointerId,x,y) => { selectedId=hitRoot(x,y)===pressedId?pressedId:""; }
+        onReleased: (pointerId,x,y) => { const id=hitRoot(x,y);selectedId="";if(id.length&&id===pressedId)overlay.activateOption(id);pressedId=""; }
+        onCanceled: {selectedId="";pressedId="";}
     }
     Rectangle {
         id: hub
@@ -115,45 +147,37 @@ Window {
         width: 76; height: 76; radius: 38
         visible: !studio.runtime.docked && !studio.runtime.active && !overlay.morphing && !overlay.childrenVisible
         gradient: Gradient {
-            GradientStop { position: 0; color: studio.backdropEnabled ? "#702c3a4c" : "#d92c3a4c" }
-            GradientStop { position: 1; color: studio.backdropEnabled ? "#98182432" : "#e0182432" }
+            GradientStop { position: 0; color: "#956b46" }
+            GradientStop { position: 0.45; color: "#583e2d" }
+            GradientStop { position: 1; color: "#30241e" }
         }
-        border.color: "#45647d"; border.width: 0.8
-        HubButton {
-            objectName: "dockModeButton"
-            x: 8; y: 10
-            glyph: studio.runtime.docked ? "radial" : "dock"
-            hint: studio.runtime.docked ? "Send to radial" : "Send to dock"
-            reduceMotion: studio.reducedMotion
-            onClicked: { overlay.menuOpen=false; studio.runtime.toggleDock(); }
-        }
-        HubButton {
-            objectName: "editMenuButton"
-            x: 38; y: 10
-            glyph: "edit"; hint: "Edit menu and pen button"
-            reduceMotion: studio.reducedMotion
-            onClicked: { overlay.menuOpen=false; studio.showEditor(); }
-        }
+        border.color: "#d4ab78";border.width: 1
+        Rectangle { anchors.fill: parent;anchors.margins: 4;radius: width/2;color: "transparent";border.color: "#407f5b3e" }
         HubButton {
             objectName: "moreMenuButton"
-            x: 23; y: 40
-            glyph: "more"; hint: "Sound, glass, hide, and quit"
+            anchors.fill: parent
+            bottomPadding: 21
+            glyph: overlay.menuOpen || overlay.editingButtons ? "back" : "radial"
+            hint: overlay.editingButtons ? "Tap a button to edit. Tap center to cancel." : overlay.menuOpen ? "Back to tools" : "Menu settings and Edit buttons"
+            iconColor: overlay.settingsInk
+            hoverFill: "#306a4c34";pressedFill: "#807b5537"
             reduceMotion: studio.reducedMotion
-            onClicked: overlay.menuOpen=!overlay.menuOpen
+            onClicked: {if(overlay.editingButtons)overlay.editingButtons=false;else overlay.menuOpen=!overlay.menuOpen;}
         }
+        Text { anchors.horizontalCenter: parent.horizontalCenter;y: 47;text: overlay.editingButtons?"Edit":overlay.menuOpen?"Back":"Menu";color: overlay.settingsInk;font.pixelSize: 11;font.weight: Font.Medium }
     }
     HubButton {
         objectName: "railSettingsButton"
         x: railHousing.x; y: railHousing.y
         width: 44; height: 44; railStyle: true
-        glyph: overlay.menuOpen ? "back" : "more"
+        glyph: overlay.menuOpen || overlay.editingButtons ? "back" : "more"
         hint: overlay.menuOpen ? "Back to drawing tools" : "Radial menu settings"
         iconColor: overlay.menuOpen ? overlay.settingsInk : "#e0edfa"
         hoverFill: overlay.menuOpen ? overlay.settingsHover : "#344b66"
         pressedFill: overlay.menuOpen ? overlay.settingsPressed : "#526b8b"
         reduceMotion: studio.reducedMotion
         visible: railHousing.visible && !studio.runtime.active && !overlay.childrenVisible
-        onClicked: overlay.menuOpen=!overlay.menuOpen
+        onClicked: {if(overlay.editingButtons)overlay.editingButtons=false;else overlay.menuOpen=!overlay.menuOpen;}
     }
     Item {
         id: railSettings
@@ -164,7 +188,7 @@ Window {
         Repeater {
             model: [
                 { key: "radial", label: "Send to radial" },
-                { key: "edit", label: "Edit menu and pen button" },
+                { key: "edit", label: "Edit buttons: choose a button" },
                 { key: "sound", label: "Sound" },
                 { key: "glass", label: "Glass background" },
                 { key: "hide", label: "Hide menu" },
@@ -185,67 +209,22 @@ Window {
                 selectedFill: overlay.settingsSelected
                 reduceMotion: studio.reducedMotion
                 highlighted: modelData.key==="sound" ? studio.soundEnabled : modelData.key==="glass" ? studio.backdropEnabled : false
-                onClicked: {
-                    if(modelData.key==="sound") { studio.soundEnabled=!studio.soundEnabled; return; }
-                    if(modelData.key==="glass") { studio.backdropEnabled=!studio.backdropEnabled; return; }
-                    overlay.menuOpen=false
-                    if(modelData.key==="radial") studio.runtime.toggleDock()
-                    else if(modelData.key==="edit") studio.showEditor()
-                    else if(modelData.key==="hide") studio.hideOverlay()
-                    else { studio.showEditor(); overlay.quitRequested(); }
-                }
-            }
-        }
-    }
-    Rectangle {
-        id: morePanel
-        objectName: "overlayMorePanel"
-        visible: overlay.menuOpen && hub.visible
-        x: studio.runtime.radialCenter.x+112+width+8 < overlay.width ? studio.runtime.radialCenter.x+112 : Math.max(8,studio.runtime.radialCenter.x-112-width)
-        y: Math.max(8,Math.min(overlay.height-height-8,hub.y-10))
-        width: 194; height: options.implicitHeight+16; radius: 14
-        color: "#f03b2d24"; border.color: "#ad8055"
-        Column {
-            id: options
-            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
-            spacing: 3
-            OptionSwitch {
-                text: "Sound"; checked: studio.soundEnabled; focusPolicy: Qt.NoFocus
-                onToggled: studio.soundEnabled=checked
-            }
-            OptionSwitch {
-                text: "Glass background"; checked: studio.backdropEnabled; focusPolicy: Qt.NoFocus
-                onToggled: studio.backdropEnabled=checked
-            }
-            Repeater {
-                model: ["Hide menu","Quit Radial Studio"]
-                Button {
-                    required property int index
-                    required property string modelData
-                    width: options.width; height: 34; text: modelData; focusPolicy: Qt.NoFocus
-                    onClicked: {
-                        overlay.menuOpen=false;
-                        if(index===0) studio.hideOverlay();
-                        else { studio.showEditor(); overlay.quitRequested(); }
-                    }
-                    contentItem: Text { text: parent.text; color: overlay.settingsInk; verticalAlignment: Text.AlignVCenter }
-                    background: Rectangle { radius: 8; color: parent.hovered ? overlay.settingsHover : "transparent" }
-                }
+                onClicked: overlay.activateOption(modelData.key)
             }
         }
     }
     Rectangle {
         id: result
         objectName: "overlayResult"
-        visible: overlay.resultMessage.length>0 && !overlay.menuOpen && !overlay.childrenVisible && !overlay.morphing
+        visible: (overlay.resultMessage.length>0 || overlay.editingButtons) && !overlay.menuOpen && !overlay.childrenVisible && !overlay.morphing
         width: Math.min(320,overlay.width-24); height: message.implicitHeight+20; radius: 12
         x: studio.runtime.docked ? 12 : Math.max(8,Math.min(overlay.width-width-8,studio.runtime.radialCenter.x-width/2))
         y: Math.min(overlay.height-height-8,studio.runtime.docked ? overlay.height/2+164 : studio.runtime.radialCenter.y+116)
-        color: studio.backdropEnabled ? "#b0192635" : "#ee192635"; border.color: "#547593"
+        color: "#ee382920"; border.color: "#ad8055"
         Text {
             id: message
             anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
-            text: overlay.resultMessage; color: "#e0edfa"; font.pixelSize: 12; wrapMode: Text.Wrap
+            text: overlay.editingButtons ? "Tap a button to edit it. Tap the center to cancel." : overlay.resultMessage; color: "#e0edfa"; font.pixelSize: 12; wrapMode: Text.Wrap
         }
     }
 }

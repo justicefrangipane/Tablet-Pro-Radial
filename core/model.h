@@ -15,7 +15,7 @@ inline constexpr std::size_t MaximumGroupDepth = 4;
 using SlotArray = std::array<std::optional<std::string>, SlotCount>;
 
 enum class NodeKind { Action, Group };
-enum class ActionKind { None, Shortcut, Text };
+enum class ActionKind { None, Shortcut, Text, Modifier };
 enum Modifier : std::uint8_t { Shift = 1, Ctrl = 2, Alt = 4, Meta = 8 };
 
 struct Action {
@@ -56,5 +56,6 @@ struct ValidationIssue {
 bool isValidKey(const std::string& key);
 std::vector<ValidationIssue> validate(const Profile& profile);
 Profile defaultProfile();
+Profile legacyDefaultProfile();
 
 } // namespace radial

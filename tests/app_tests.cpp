@@ -261,7 +261,7 @@ void testDocumentControllerTests(const QString& temporaryPath) {
 
 void sessionTests() {
     MenuSession session(true, nullptr);
-    session.setProfile(radial::defaultProfile());
+    session.setProfile(radial::legacyDefaultProfile());
     session.setViewport(1100, 1100);
     session.setReducedMotion(true);
     session.toggleDock();
@@ -294,7 +294,7 @@ void sessionTests() {
 
     session.pointerPressed(77, x, y);
     session.pointerMoved(77, x + 42, y);
-    auto changed = radial::defaultProfile();
+    auto changed = radial::legacyDefaultProfile();
     changed.nodes.at("text.bold").action.key = "Q";
     changed.nodes.at("text.bold").label = "Updated bold";
     session.setProfile(changed);
@@ -323,7 +323,7 @@ void sessionTests() {
 
 void invocationGeometryTests() {
     MenuSession session(true, nullptr);
-    session.setProfile(radial::defaultProfile());
+    session.setProfile(radial::legacyDefaultProfile());
     session.setViewport(1200, 900);
     check(session.radialCenter() == QPointF(600,450), "preview defaults to viewport center");
     session.setViewport(1400, 1000);
@@ -370,7 +370,7 @@ void invocationGeometryTests() {
 
 void compactDockFanTests() {
     MenuSession session(true,nullptr);
-    auto profile = radial::defaultProfile();
+    auto profile = radial::legacyDefaultProfile();
     // Exercise every row with the same populated group, including the extreme
     // top/bottom positions that previously clipped or canceled their children.
     profile.rootSlots.fill(std::nullopt);
@@ -404,6 +404,58 @@ void compactDockFanTests() {
     }
 }
 
+void modifierTests(const QString& directory) {
+    const auto profile=radial::defaultProfile();
+    check(radial::validate(profile).empty(),"new default has valid ownership and depth");
+    for(const auto* key:{"Alt","Ctrl","Shift"}){
+        const auto id=std::string("modifier.")+key;
+        check(std::find(profile.rootSlots.begin(),profile.rootSlots.end(),id)!=profile.rootSlots.end(),"modifier belongs to main default menu");
+        check(profile.nodes.at(id).label==key,"default modifier has explicit key label");
+    }
+    auto invalid=profile;invalid.nodes.at("modifier.Alt").action.key="Meta";
+    check(!radial::validate(invalid).empty(),"unsupported held key rejected");
+    MenuSession session(true,nullptr);session.setProfile(profile);
+    const auto alt=button(session,"modifier.Alt");const double x=alt["cx"].toDouble(),y=alt["cy"].toDouble();
+    const auto press=[&]{session.pointerPressed(11,x,y);};
+    const auto lift=[&]{session.pointerReleased(11,x,y);};
+    const auto state=[&]{return button(session,"modifier.Alt")["modifierState"].toString();};
+    press();check(session.heldModifiers().contains("Alt")&&state()=="held","press immediately holds modifier");
+    session.pointerReleased(99,x,y);check(session.active(),"another pointer cannot release modifier");
+    lift();check(session.heldModifiers().isEmpty()&&!session.active(),"single lift releases modifier");
+    press();lift();check(session.heldModifiers().contains("Alt")&&state()=="latched"&&!session.active(),"double tap latches after lift");
+    press();check(session.heldModifiers().isEmpty(),"next press releases latch immediately");lift();
+    press();session.pointerMoved(11,x+90,y);check(state()=="dragged"&&session.heldModifiers().contains("Alt"),"drag-out keeps key held and shows contact lock");
+    session.pointerReleased(11,x+90,y);check(session.heldModifiers().isEmpty()&&state().isEmpty(),"drag lock releases on stylus lift");
+    press();lift();press();lift();
+    const auto ctrl=button(session,"modifier.Ctrl");const double cx=ctrl["cx"].toDouble(),cy=ctrl["cy"].toDouble();
+    session.pointerPressed(12,cx,cy);check(session.heldModifiers().size()==2,"latched modifier can combine with another held modifier");
+    session.pointerReleased(12,cx,cy);check(session.heldModifiers()==QStringList{"Alt"},"lifting second modifier preserves latched first key");
+    session.cancel();check(session.heldModifiers().isEmpty(),"cancel releases latched keys");
+    press();session.setViewport(720,600);check(session.heldModifiers().isEmpty(),"viewport interruption releases held key");
+    session.setReducedMotion(true);session.toggleDock();
+    const auto tools=button(session,"tools");const double tx=tools["dockX"].toDouble(),ty=tools["dockY"].toDouble();
+    session.pointerPressed(13,tx,ty);session.pointerMoved(13,tx+42,ty);
+    check(session.childButtons().size()==4,"new default Tools opens retained groups");
+    const auto text=button(session,"text",true);const double ax=text["axis"].toDouble();
+    session.pointerMoved(13,text["cx"].toDouble(),text["cy"].toDouble());
+    session.pointerMoved(13,text["cx"].toDouble()+42*std::cos(ax),text["cy"].toDouble()+42*std::sin(ax));
+    check(session.childButtons().size()==6,"new default retains nested Text commands");
+    session.cancel();
+    const auto legacy=radial::legacyDefaultProfile();
+    QDir().mkpath(directory+"/legacy");writeBytes(directory+"/legacy/applied.radial.json",encodeProfile(legacy));
+    StudioController upgraded(nullptr,directory+"/legacy",true);
+    check(upgraded.draft()==profile&&!upgraded.dirty(),"untouched old defaults migrate to new defaults");
+    auto custom=legacy;custom.nodes.at("brush").label="My brush";
+    QDir().mkpath(directory+"/custom");writeBytes(directory+"/custom/applied.radial.json",encodeProfile(custom));
+    StudioController preserved(nullptr,directory+"/custom",true);
+    check(preserved.draft()==custom,"customized menus are preserved");
+    preserved.useDefaultMenu();check(preserved.draft()==profile&&preserved.dirty(),"new defaults can be loaded as a reviewable draft");
+    preserved.undo();check(preserved.draft()==custom,"default replacement is undoable");
+    preserved.selectNode("brush");preserved.setKind("modifier");preserved.setModifierKey("Shift");
+    check(preserved.selectedKind()=="modifier"&&preserved.selectedKey()=="Shift"&&preserved.selectedLabel()=="Shift","editor creates labeled modifier action");
+    const auto decoded=decodeProfile(encodeProfile(preserved.draft()));
+    check(decoded.profile&&*decoded.profile==preserved.draft(),"configured modifier persists through save and load");
+}
 void queuedSessionTests() {
 #ifndef Q_OS_WIN
     WindowPlatform platform;
@@ -460,7 +512,7 @@ int main(int argc, char** argv) {
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, temporary.path() + "/settings");
     int result = EXIT_SUCCESS;
     try {
-        codecTests(); testDocumentCodecTests(); controllerTests(temporary.path()); testDocumentControllerTests(temporary.path()); sessionTests(); invocationGeometryTests(); compactDockFanTests(); queuedSessionTests();
+        modifierTests(temporary.path()); codecTests(); testDocumentCodecTests(); controllerTests(temporary.path()); testDocumentControllerTests(temporary.path()); sessionTests(); invocationGeometryTests(); compactDockFanTests(); queuedSessionTests();
         std::cout << "PASS: " << checks << " application integration checks\n";
     } catch (const std::exception& error) {
         std::cerr << "FAIL after " << checks << " checks: " << error.what() << '\n';

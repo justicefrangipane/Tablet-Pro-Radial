@@ -8,7 +8,7 @@ A native Windows radial menu and editor with pen-button invocation, a docked rai
 
 Open the latest release and download the file ending in **Windows-x64-Setup.exe**. Run it on each computer. Setup installs for your Windows account and includes the Qt runtime; administrator access and a separate Qt installation are not required. The installer is currently unsigned.
 
-The current application version is **0.3.5**. This is the version used by the installer and updater.
+The current application version is **0.3.6**. This is the version used by the installer and updater.
 
 ## Get updates
 
@@ -20,9 +20,21 @@ For the older 0.3.3 build, enter `justicefrangipane/Tablet-Pro-Radial` in its Up
 
 ## Start using Radial
 
-Use **Ctrl+Alt+Space** or your configured pen button to show or hide the menu. Use the center controls to dock it, edit its buttons, or open more options. Closing the editor leaves Radial in the tray; **Quit** exits the app. Use only one Radial or Tablet Pro Studio instance at a time to avoid overlapping pen shortcuts.
+Use **Ctrl+Alt+Space** or your configured pen button to show or hide the menu. Tap **Menu** in the bronze center to replace the outer ring with **Dock, Edit, Sound, Glass, Hide, and Quit**. Tap **Back** to return to tools. The settings stay within the original wheel footprint. Closing the editor leaves Radial in the tray; **Quit** exits the app. Use only one Radial or Tablet Pro Studio instance at a time to avoid overlapping pen shortcuts.
 
 Save your custom menu with **Save test radial…**, and use **Apply draft** to activate editor changes. See [Windows quick start](docs/RUN-WINDOWS.md) and [tray and updates](docs/TRAY-AND-UPDATES.md).
+
+The main default menu contains **Brush, Eraser, Alt, Ctrl, Shift, and Tools**. The Tools group retains selection, color, text, and editing shortcuts.
+
+- **Hold** a modifier button to keep the key down.
+- **Drag out** to lock it for the current contact; lifting the stylus releases it.
+- **Double-tap** to keep it on after lifting; tap it again to release. A small lock marks this state.
+
+Held keys release when the menu is hidden, the editor opens, the target app changes, or Radial exits. They are not saved across restarts. Existing customized menus are preserved; **Use new default menu** loads the new layout as an undoable draft. Unchanged old defaults upgrade automatically.
+
+For quick edits, choose **Menu → Edit**, then tap the button to open its inspector. Select **Modifier key** as its behavior to assign Alt, Ctrl, or Shift, then **Apply draft**.
+
+![Bronze radial and settings ring](docs/images/bronze-radial.png)
 
 The docked **Continuous rail** keeps the tools and settings inside one 44 px housing. Tap **•••** at the top to switch to settings; the background turns bronze and the icons turn warm ivory. Settings replace the tool slots instead of opening a side panel. Tap the back arrow to return to drawing.
 
@@ -39,12 +51,12 @@ The docked **Continuous rail** keeps the tools and settings inside one 44 px hou
 
 ## What is implemented
 
-- Six fixed root slots, icon-only menu surfaces, and nested groups with six fixed child slots. Removing a button leaves its slot empty; other gestures retain their positions.
+- Six fixed root slots, clear Alt/Ctrl/Shift labels, and nested groups with six fixed child slots. Removing a button leaves its slot empty; other gestures retain their positions.
 - Press, drag outward, choose a child, and release once to commit. A straight neutral corridor, angular gaps, backtracking, pointer ownership, and cancellation protect repeatable movement.
 - Quiet Gravity: wedge surfaces and their icons break into small shaded voxels; light collects at the left rail, fragments travel toward each destination, and the reconstructed buttons settle with a restrained snap. Undocking reverses the same path.
 - A separate editor with a menu hierarchy, icon/behavior inspector, root/group insertion, slot movement, subtree removal, undo/redo, Open, Save as, Discard, and Apply.
 - Independent draft preview and applied runtime. Preview gestures report their action inside the editor. Apply validates and atomically persists a new profile; an active gesture finishes against its original snapshot.
-- Shortcut and text actions, generated optional click/crackle cues, reduced motion, and persisted preferences. Sound starts muted.
+- Shortcut, text, and held modifier actions, generated optional click/crackle cues, reduced motion, and persisted preferences. Sound starts muted.
 - A separate non-activating Windows overlay with Ctrl+Alt+Space invocation, foreground-target checks, bounded input dispatch, and explicit failure reporting. Other operating systems use simulation.
 - An isolated Windows HID helper using the supplied Tablet Pro library, with first/second side-button selection, rising-edge invocation, no repeated toggles while held, and cleanup when the parent exits. Native Wacom background capture is not assumed; the driver shortcut route uses the same menu.
 
@@ -75,9 +87,9 @@ ctest --test-dir build-core --output-on-failure
 
 ## Try the editor
 
-1. Select a node in **Menu structure**. Change its icon and behavior in **Button inspector**. Names appear only in the editor.
+1. Select a node in **Menu structure**. Change its icon and behavior in **Button inspector**. Modifier keys also show Alt, Ctrl, or Shift on the menu. You can tap a preview button to select it, or right-click a runtime button to edit it directly.
 2. Select **Root menu** to add a root button, or select a group to add one of its six children. Occupied slots cannot be overwritten. A newly created group must receive a child before it can be applied.
-3. Press the Text icon in the preview and drag outward. Six child icons appear. Continue to a child and release; the status reports the action. Drag back through the parent to backtrack, or press Escape to cancel.
+3. Open Tools, then press the Text icon in the preview and drag outward. Six child icons appear. Continue to a child and release; the status reports the action. Drag back through the parent to backtrack, or press Escape to cancel.
 4. Use **Dock to rail** or the replay control to inspect Quiet Gravity. Try the same Text gesture from the rail, moving toward the canvas.
 5. **Save as** exports a profile; **Apply draft** publishes and persists the runtime version. These are separate operations. **Discard** restores the applied version and can itself be undone.
 6. On Windows, focus your drawing application and invoke the overlay with your selected pen side button or **Ctrl+Alt+Space**. Release those keyboard modifiers before completing a gesture. The runtime's editor control returns to the editor.
@@ -106,6 +118,6 @@ See [architecture](docs/ARCHITECTURE.md), [profile format](docs/PROFILE-FORMAT.m
 
 ## Scope retained for later
 
-Legacy Tablet Pro import belongs in a separate translator into the new model. macOS native dispatch, iOS/custom-keyboard hosting, direct Wacom background capture, additional dock edges, automatic layout adaptation, held/sticky/repeating actions, arbitrary macros, and app-specific profile switching are not implemented in this version. The core and platform boundary leave room for them without embedding those concerns into gesture geometry.
+Legacy Tablet Pro import belongs in a separate translator into the new model. macOS native dispatch, iOS/custom-keyboard hosting, direct Wacom background capture, additional dock edges, automatic layout adaptation, repeating actions, arbitrary macros, and app-specific profile switching are not implemented in this version. The core and platform boundary leave room for them without embedding those concerns into gesture geometry.
 
 The Unfolded Bible palette source was not available in the supplied files. The motion and renderer here are new code; no reuse of that source is claimed.

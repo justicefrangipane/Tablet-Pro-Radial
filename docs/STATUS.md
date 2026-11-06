@@ -1,4 +1,8 @@
-# Current release: 0.3.5
+# Current release: 0.3.6
+
+The floating center now opens bronze-and-ivory settings in the existing outer ring. Edit mode selects a button for its inspector; right-click also opens direct editing. The default main menu includes labeled Alt, Ctrl, and Shift with hold, drag-until-lift, and double-tap latch gestures. Customized profiles are preserved; exact old defaults migrate automatically, with an undoable default-menu action for other profiles.
+
+Validation adds modifier lifecycle, save/load, default migration, direct editing, actual Qt double-click events, and native Windows key injection into a separate test process. Physical stylus behavior and a second-computer install remain unverified. Logo exploration is separate from the application identity pending a final selection.
 
 The GitHub distribution and update feed use `justicefrangipane/Tablet-Pro-Radial`. See [tray and updates](TRAY-AND-UPDATES.md) and the [release guide](RELEASING.md) for the current Windows workflow. The notes below are the historical 0.3.0 implementation audit, not current release acceptance results.
 
@@ -37,4 +41,4 @@ The GPU scene-graph path compiles; the screenshots exercise its shared geometry 
 
 The current release is left-edge only. A small viewport-bound fan-origin adjustment is fixed when a branch opens; its positions and angles never follow the pointer. Branches that still cannot fit are canceled. Accessibility beyond reduced motion, tooltips, and ordinary editor controls still needs a dedicated pass. Runtime selection still depends on pointer input. Offscreen software smoke tests validate layout and rendering, but that platform does not support native window masks and cannot prove Windows click-through behavior.
 
-Held modifiers, next-stroke or sticky actions, and other richer action types remain unimplemented. The Windows SendInput partial-insertion test shim also remains to be written. Future work includes legacy import, deeper platform integration, and macOS/iOS hosts. Vendor-specific direct Wacom capture remains deferred; the driver-configured Ctrl+Alt+Space route is provided. Unfolded Bible animation source was not supplied, so this build contains no reused palette code.
+In the historical 0.3.0 build, held and sticky actions were unimplemented. Version 0.3.6 adds Alt/Ctrl/Shift holds and latches; next-stroke and repeating actions remain deferred. The Windows SendInput partial-insertion test shim also remains to be written. Future work includes legacy import, deeper platform integration, and macOS/iOS hosts. Vendor-specific direct Wacom capture remains deferred; the driver-configured Ctrl+Alt+Space route is provided. Unfolded Bible animation source was not supplied, so this build contains no reused palette code.

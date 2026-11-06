@@ -47,6 +47,48 @@
         },
         {
             "action": {
+                "id": "command.modifier.Alt",
+                "key": "Alt",
+                "modifiers": [
+                ],
+                "text": "",
+                "type": "modifier"
+            },
+            "icon": "Alt",
+            "id": "modifier.Alt",
+            "kind": "action",
+            "label": "Alt"
+        },
+        {
+            "action": {
+                "id": "command.modifier.Ctrl",
+                "key": "Ctrl",
+                "modifiers": [
+                ],
+                "text": "",
+                "type": "modifier"
+            },
+            "icon": "Ctrl",
+            "id": "modifier.Ctrl",
+            "kind": "action",
+            "label": "Ctrl"
+        },
+        {
+            "action": {
+                "id": "command.modifier.Shift",
+                "key": "Shift",
+                "modifiers": [
+                ],
+                "text": "",
+                "type": "modifier"
+            },
+            "icon": "Shift",
+            "id": "modifier.Shift",
+            "kind": "action",
+            "label": "Shift"
+        },
+        {
+            "action": {
                 "id": "command.select",
                 "key": "L",
                 "modifiers": [
@@ -307,15 +349,29 @@
             "id": "text.underline",
             "kind": "action",
             "label": "Underline"
+        },
+        {
+            "icon": "group",
+            "id": "tools",
+            "kind": "group",
+            "label": "Tools",
+            "slots": [
+                "select",
+                "color",
+                "text",
+                "settings",
+                null,
+                null
+            ]
         }
     ],
     "rootSlots": [
         "brush",
         "eraser",
-        "select",
-        "color",
-        "text",
-        "settings"
+        "modifier.Alt",
+        "modifier.Ctrl",
+        "modifier.Shift",
+        "tools"
     ],
     "schemaVersion": 1
 }

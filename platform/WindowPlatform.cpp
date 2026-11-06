@@ -147,7 +147,7 @@ INPUT keyboardEvent(quint32 token)
     return event;
 }
 
-bool conflictingKeyDown(quint16 key)
+bool conflictingKeyDown(quint16 key, const QStringList& owned = {})
 {
     // Never release a user's pre-existing modifiers to make a shortcut work.
     // The high bit is current state; the unreliable low bit is deliberately ignored.
@@ -156,15 +156,18 @@ bool conflictingKeyDown(quint16 key)
         VK_RCONTROL, VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN
     };
     for (int modifier : modifiers) {
+        if ((modifier==VK_CONTROL || modifier==VK_LCONTROL) && owned.contains("Ctrl")) continue;
+        if ((modifier==VK_SHIFT || modifier==VK_LSHIFT) && owned.contains("Shift")) continue;
+        if ((modifier==VK_MENU || modifier==VK_LMENU) && owned.contains("Alt")) continue;
         if ((GetAsyncKeyState(modifier) & 0x8000) != 0)
             return true;
     }
     return key && (GetAsyncKeyState(key) & 0x8000) != 0;
 }
 
-bool invocationInputDown(quint16 mainKey)
+bool invocationInputDown(quint16 mainKey, const QStringList& owned)
 {
-    if (conflictingKeyDown(mainKey))
+    if (conflictingKeyDown(mainKey, owned))
         return true;
     // The driver fallback is Ctrl+Alt+Space. The pen tip/barrel may also still be
     // represented by mouse buttons while its Qt release event is being handled.
@@ -188,6 +191,15 @@ WindowPlatform::WindowPlatform(QObject* parent) : QObject(parent)
     m_targetWatch.setInterval(30);
     m_targetWatch.setTimerType(Qt::PreciseTimer);
     connect(&m_targetWatch, &QTimer::timeout, this, [this] {
+#ifdef Q_OS_WIN
+        if (m_modifierTarget) {
+            const auto hwnd=reinterpret_cast<HWND>(m_modifierTarget);
+            DWORD process=0; const DWORD tid=GetWindowThreadProcessId(hwnd,&process);
+            if(!IsWindow(hwnd) || GetForegroundWindow()!=hwnd || process!=m_modifierProcess || tid!=m_modifierThread){
+                releaseModifiers();releaseTarget();emit targetLost();return;
+            }
+        }
+#endif
         if (m_capturedTarget && !targetUnchanged(m_capturedTarget)) {
             releaseTarget();
             fail(QStringLiteral("The target application changed. Start a new gesture."));
@@ -200,6 +212,7 @@ WindowPlatform::WindowPlatform(QObject* parent) : QObject(parent)
 
 WindowPlatform::~WindowPlatform()
 {
+    releaseModifiers();
     cancelQueuedAction();
     m_targetWatch.stop();
     unregisterToggleHotkey();
@@ -253,6 +266,7 @@ bool WindowPlatform::configureOverlay(QQuickWindow* window)
                 applyOverlayStyle();
             else {
                 const bool queued = hasQueuedAction();
+                releaseModifiers();
                 releaseTarget();
                 if (queued)
                     emit targetLost();
@@ -333,10 +347,42 @@ bool WindowPlatform::targetUnchanged(quintptr target) const
 void WindowPlatform::releaseTarget()
 {
     cancelQueuedAction();
-    m_targetWatch.stop();
+    if(m_heldModifiers.isEmpty())m_targetWatch.stop();
     m_capturedTarget = 0;
     m_targetProcess = 0;
     m_targetThread = 0;
+}
+
+bool WindowPlatform::setModifierHeld(const QString& key, bool held, quintptr target)
+{
+    if(!QStringList{"Alt","Ctrl","Shift"}.contains(key))return fail("Unknown modifier key.");
+    if(m_heldModifiers.contains(key)==held)return true;
+    if(held && (!targetUnchanged(target) || (m_modifierTarget && m_modifierTarget!=target)))
+        return fail("Choose the drawing application before holding a modifier.");
+#ifdef Q_OS_WIN
+    const WORD vk=key=="Ctrl"?VK_LCONTROL:key=="Shift"?VK_LSHIFT:VK_LMENU;
+    const int generic=key=="Ctrl"?VK_CONTROL:key=="Shift"?VK_SHIFT:VK_MENU;
+    if(held && (GetAsyncKeyState(generic)&0x8000))
+        return fail("Release the physical modifier key first.");
+    INPUT input=keyboardEvent(vk | (held?0:upToken));
+    if(SendInput(1,&input,sizeof(INPUT))!=1)
+        return fail(held?"Windows blocked the modifier press.":"Windows blocked the modifier release. Tap it again to retry.");
+#endif
+    if(held){
+        m_heldModifiers.append(key);m_modifierTarget=target;
+        m_modifierProcess=m_targetProcess;m_modifierThread=m_targetThread;m_targetWatch.start();
+    } else {
+        m_heldModifiers.removeAll(key);
+        if(m_heldModifiers.isEmpty()){m_modifierTarget=0;m_modifierProcess=m_modifierThread=0;if(!m_capturedTarget)m_targetWatch.stop();}
+    }
+    clearError();return true;
+}
+
+void WindowPlatform::releaseModifiers()
+{
+    const auto held=m_heldModifiers;
+    for(const auto& key:held)setModifierHeld(key,false);
+    if(m_heldModifiers.isEmpty() && !held.isEmpty())emit modifiersReleased();
 }
 
 bool WindowPlatform::shortcutSupported(const QString& key, const QStringList& modifiers) const
@@ -373,12 +419,13 @@ bool WindowPlatform::executeShortcut(const QString& key, const QStringList& modi
         return fail(QStringLiteral("This key or modifier is not supported."));
     QVector<quint32> events;
     events.reserve(2 * parsed->modifiers.size() + 2);
+    const auto held=[&](quint16 code){return m_heldModifiers.contains(code==0x11?"Ctrl":code==0x10?"Shift":code==0x12?"Alt":"Meta");};
     for (quint16 modifier : parsed->modifiers)
-        events.append(modifier);
+        if(!held(modifier)) events.append(modifier);
     events.append(parsed->key);
     events.append(parsed->key | upToken);
     for (auto it = parsed->modifiers.crbegin(); it != parsed->modifiers.crend(); ++it)
-        events.append(*it | upToken);
+        if(!held(*it)) events.append(*it | upToken);
     if (!dispatchEvents(events, capturedTarget, parsed->key))
         return false;
 #ifndef Q_OS_WIN
@@ -394,6 +441,7 @@ bool WindowPlatform::executeText(const QString& text, quintptr capturedTarget)
     // malformed UTF-16; a JSON/text editor should not be able to send half a pair.
     if (const auto error = textValidationError(text); !error.isEmpty())
         return fail(error);
+    if(!m_heldModifiers.isEmpty())return fail("Release modifier buttons before typing text.");
     QVector<quint32> events;
     events.reserve(text.size() * 2);
     for (const QChar unit : text) {
@@ -480,7 +528,7 @@ void WindowPlatform::pollQueuedAction()
         return;
     }
 #ifdef Q_OS_WIN
-    if (invocationInputDown(m_queuedAction->mainKey)) {
+    if (invocationInputDown(m_queuedAction->mainKey, m_heldModifiers)) {
         m_releaseReadyAt = -1;
         return;
     }
@@ -514,7 +562,7 @@ bool WindowPlatform::dispatchEvents(const QVector<quint32>& tokens, quintptr tar
         return fail(QStringLiteral("A previous input batch could not be released. Release any stuck keys and restart the menu."));
     }
 #ifdef Q_OS_WIN
-    if (conflictingKeyDown(mainKey))
+    if (conflictingKeyDown(mainKey, m_heldModifiers))
         return fail(QStringLiteral("Release the keyboard modifiers and shortcut key, then try again."));
     QVector<INPUT> events;
     events.reserve(tokens.size());

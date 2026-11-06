@@ -16,6 +16,7 @@
 #include <QQuickWindow>
 #include <QQuickItem>
 #include <QColor>
+#include <QMouseEvent>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <iostream>
@@ -145,7 +146,7 @@ void trayTests(){
     auto* railToggle=overlay->findChild<QObject*>("railSettingsButton");
     auto* surface=overlay->findChild<RadialSurface*>("runtimeSurface");
     auto* floatingHub=overlay->findChild<QQuickItem*>("overlayToolbar");
-    auto* floatingOptions=overlay->findChild<QQuickItem*>("overlayMorePanel");
+    auto* floatingOptions=overlay->findChild<QQuickItem*>("settingsSurface");
     expect(rail&&settings&&railToggle&&surface&&floatingHub&&floatingOptions,"continuous rail controls exist");
     expect(rail->isVisible()&&!floatingHub->isVisible()&&surface->isVisible(),"docked rail replaces the circular hub");
     for(const auto height:{480,768,1080}){
@@ -166,7 +167,7 @@ void trayTests(){
         const auto rect=action->mapRectToScene(action->boundingRect());
         expect(rect.left()==rail->x()&&rect.right()==rail->x()+44&&rect.top()>=rail->y()&&rect.bottom()<=rail->y()+rail->height(),"every open settings action stays within the 44px rail");
         expect(action->width()==44&&action->height()==44,"settings retain full-size pointer targets");
-        expect(action->property("iconColor").value<QColor>()!=overlay->findChild<QObject*>("dockModeButton")->property("iconColor").value<QColor>(),"settings icons are distinct from the drawing-control palette");
+        expect(action->property("iconColor").value<QColor>()!=QColor("#e0edfa"),"settings icons are distinct from the drawing-control palette");
     }
     const auto actionItem=[&](const QString& key)->QQuickItem*{for(auto* child:settings->childItems())if(child->objectName()=="railAction_"+key)return child;return nullptr;};
     auto* sound=actionItem("sound");const bool soundBefore=studio.soundEnabled();
@@ -180,6 +181,30 @@ void trayTests(){
     QMetaObject::invokeMethod(railToggle,"clicked",Qt::DirectConnection);
     QMetaObject::invokeMethod(actionItem("radial"),"clicked",Qt::DirectConnection);
     expect(!studio.runtime()->docked()&&!rail->isVisible()&&floatingHub->isVisible()&&!overlay->property("menuOpen").toBool(),"undock restores centered floating controls and closes settings");
+    QVariantMap alt;
+    for(const auto& value:studio.runtime()->buttons())if(value.toMap()["id"]=="modifier.Alt")alt=value.toMap();
+    const QPointF at(alt["cx"].toDouble(),alt["cy"].toDouble());
+    const auto mouse=[&](QEvent::Type type){QMouseEvent event(type,at,at,Qt::LeftButton,type==QEvent::MouseButtonRelease?Qt::NoButton:Qt::LeftButton,Qt::NoModifier);QCoreApplication::sendEvent(surface,&event);};
+    mouse(QEvent::MouseButtonPress);mouse(QEvent::MouseButtonRelease);
+    mouse(QEvent::MouseButtonDblClick);mouse(QEvent::MouseButtonRelease);
+    expect(studio.runtime()->heldModifiers().contains("Alt"),"native double-click event reaches modifier latch");
+    mouse(QEvent::MouseButtonPress);mouse(QEvent::MouseButtonRelease);
+    expect(studio.runtime()->heldModifiers().isEmpty(),"next mouse tap releases latch");
+    auto* center=overlay->findChild<QObject*>("moreMenuButton");
+    QMetaObject::invokeMethod(center,"clicked",Qt::DirectConnection);
+    auto* ring=qobject_cast<RadialSurface*>(floatingOptions);
+    expect(ring&&ring->isVisible()&&ring->buttons().size()==6&&!surface->isVisible(),"center replaces outer tools with six settings");
+    expect(ring->bronzeTheme()&&surface->bronzeTheme(),"radial uses bronze and ivory");
+    QVariantMap editOption;
+    for(const auto& value:ring->buttons())if(value.toMap()["id"]=="edit")editOption=value.toMap();
+    const double ex=editOption["cx"].toDouble(),ey=editOption["cy"].toDouble();
+    ring->pressed(31,ex,ey);ring->released(31,ex,ey);
+    expect(overlay->property("editingButtons").toBool()&&surface->isVisible()&&!ring->isVisible(),"Edit asks for a button without dispatching it");
+    const auto selected=studio.runtime()->buttons().at(2).toMap();
+    const double bx=selected["cx"].toDouble(),by=selected["cy"].toDouble();
+    surface->pressed(32,bx,by);surface->released(32,bx,by);
+    expect(studio.selectedId()==selected["id"].toString()&&!overlay->isVisible()&&editor->isVisible(),"button editing opens that exact button in the editor");
+    overlay->show();
     studio.runtime()->toggleDock();
     QMetaObject::invokeMethod(railToggle,"clicked",Qt::DirectConnection);
     const int previousHide=hide;

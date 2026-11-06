@@ -74,6 +74,7 @@ int main(int argc,char**argv) {
     backdrop.configure(overlay);
     if(!smoke){studio.platform()->registerToggleHotkey();studio.stylus()->start();}
     auto* surface=overlay->findChild<RadialSurface*>("runtimeSurface");
+    auto* settingsSurface=overlay->findChild<RadialSurface*>("settingsSurface");
     const auto sector=[](QPointF origin,double axis,double inner,double outer,double halfAngle) {
         QPolygonF points;
         for(int i=0;i<=24;++i){const auto a=axis-halfAngle+2*halfAngle*i/24;points<<origin+QPointF(std::cos(a)*outer,std::sin(a)*outer);}
@@ -101,7 +102,7 @@ int main(int argc,char**argv) {
         if(session->transitioning())region+=QRect(0,0,overlay->width(),overlay->height());
         else if(p<=0){
             const auto center=session->radialCenter();
-            for(const auto& value:session->buttons())region+=sector(center,value.toMap()["angle"].toDouble(),41,101,3.141592653589793/6-.02);
+            for(const auto& value:settingsSurface&&settingsSurface->isVisible()?settingsSurface->buttons():session->buttons())region+=sector(center,value.toMap()["angle"].toDouble(),41,101,3.141592653589793/6-.02);
         }
         else if(!surface||!surface->continuousRail())for(const auto& value:session->buttons()){
             const auto b=value.toMap();QPainterPath path;
@@ -120,6 +121,7 @@ int main(int argc,char**argv) {
     QObject::connect(studio.runtime(),&MenuSession::stateChanged,&app,updateMask);
     QObject::connect(&studio,&StudioController::changed,&app,updateMask);
     if(surface)QObject::connect(surface,&RadialSurface::visualBoundsChanged,&app,updateMask);
+    if(settingsSurface)QObject::connect(settingsSurface,&QQuickItem::visibleChanged,&app,updateMask);
     for(const auto* name:{"overlayRail","overlayToolbar","overlayMorePanel","overlayResult"})if(auto* item=overlay->findChild<QQuickItem*>(name)){
         QObject::connect(item,&QQuickItem::visibleChanged,&app,updateMask);
         QObject::connect(item,&QQuickItem::xChanged,&app,updateMask);
@@ -156,6 +158,7 @@ int main(int argc,char**argv) {
         QTimer::singleShot(1200,&app,[&,output] {
             const bool saved=editor->grabWindow().save(output+"/editor.png");
             qInfo().noquote()<<QJsonDocument(QJsonObject{{"qmlLoaded",true},{"screenshot",saved},{"width",editor->width()},{"height",editor->height()},{"roots",studio.preview()->buttons().size()}}).toJson(QJsonDocument::Compact);
+            studio.preview()->setProfile(radial::legacyDefaultProfile());
             studio.preview()->replayDock();
             QTimer::singleShot(750,&app,[&,output] {editor->grabWindow().save(output+"/docking.png");});
             QTimer::singleShot(1900,&app,[&,output,saved] {
@@ -192,13 +195,14 @@ int main(int argc,char**argv) {
                     QTimer::singleShot(250,&app,[&,output]{
                         const bool shown=overlay->isVisible()&&overlay->grabWindow().save(output+"/runtime-floating.png");
                         const auto* hub=overlay->findChild<QQuickItem*>("overlayToolbar");
-                        auto* mode=overlay->findChild<QObject*>("dockModeButton");
+                        auto* mode=overlay->findChild<QObject*>("moreMenuButton");
                         auto* more=overlay->findChild<QObject*>("moreMenuButton");
                         const auto center=studio.runtime()->radialCenter();
-                        const bool centered=hub&&QLineF(hub->position()+QPointF(hub->width()/2,hub->height()/2),center).length()<1&&mode&&mode->property("glyph")=="dock";
+                        const bool centered=hub&&QLineF(hub->position()+QPointF(hub->width()/2,hub->height()/2),center).length()<1&&mode&&mode->property("glyph")=="radial";
                         if(more)QMetaObject::invokeMethod(more,"clicked",Qt::DirectConnection);
-                        const auto* morePanel=overlay->findChild<QQuickItem*>("overlayMorePanel");
-                        const bool overflow=morePanel&&morePanel->isVisible();
+                        const auto* morePanel=overlay->findChild<QQuickItem*>("settingsSurface");
+                        const bool overflow=morePanel&&morePanel->isVisible()&&!surface->isVisible()&&settingsSurface->buttons().size()==6;
+                        QEventLoop ringWait;QTimer::singleShot(260,&ringWait,&QEventLoop::quit);ringWait.exec();
                         overlay->grabWindow().save(output+"/runtime-more.png");
                         overlay->setProperty("menuOpen",false);
                         QMetaObject::invokeMethod(studio.stylus(),"sideButtonPressed",Qt::DirectConnection);
@@ -227,6 +231,7 @@ int main(int argc,char**argv) {
                             if(railToggle)QMetaObject::invokeMethod(railToggle,"clicked",Qt::DirectConnection);
                             const bool flips=narrowClosed&&narrowOpen&&surface->isVisible();
                             studio.runtime()->setReducedMotion(false);
+                            studio.runtime()->setProfile(radial::legacyDefaultProfile());
                             QVariantMap text;
                             for(const auto& value:studio.runtime()->buttons())if(value.toMap()["id"]=="text")text=value.toMap();
                             const double x=text["dockX"].toDouble(),y=text["dockY"].toDouble();
@@ -246,7 +251,7 @@ int main(int argc,char**argv) {
                                     const bool opened=dialog&&QMetaObject::invokeMethod(dialog,"open");
                                     QTimer::singleShot(200,&app,[&,output,shown,hidden,reopened,rail,centered,overflow,flips,fan,delivered,opened]{
                                         const bool penSetup=opened&&editor->grabWindow().save(output+"/pen-setup.png");
-                                        qInfo().noquote()<<QJsonDocument(QJsonObject{{"runtimeShown",shown},{"sideButtonHides",hidden},{"sideButtonReopens",reopened},{"runtimeDocked",rail},{"centeredControls",centered},{"overflow",overflow},{"continuousRailAndMask",flips},{"fan",fan},{"queuedActionDelivered",delivered},{"penSetup",penSetup}}).toJson(QJsonDocument::Compact);
+                                        qInfo().noquote()<<QJsonDocument(QJsonObject{{"runtimeShown",shown},{"sideButtonHides",hidden},{"sideButtonReopens",reopened},{"runtimeDocked",rail},{"centeredControls",centered},{"settingsReplaceOuterRing",overflow},{"continuousRailAndMask",flips},{"fan",fan},{"queuedActionDelivered",delivered},{"penSetup",penSetup}}).toJson(QJsonDocument::Compact);
                                         app.exit(shown&&hidden&&reopened&&rail&&centered&&overflow&&flips&&fan&&delivered&&penSetup?0:8);
                                     });
                                 });
