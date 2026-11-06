@@ -60,7 +60,7 @@ internal static class GlassFixSetup
                 process.WaitForExit();
                 if (process.ExitCode != 0) throw new Exception(errors.Result + output.Result);
             }
-            if (!verify && MessageBox.Show("Tablet Pro Radial @APP_VERSION@ is installed.\n\nOpen it now? Look for its blue radial icon beside the clock (or under the hidden-icons arrow).", "Tablet Pro Radial", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+            if (!verify && MessageBox.Show("Tablet Pro Radial @APP_VERSION@ is installed.\n\nOpen it now? Look for its bronze-and-ivory fan icon beside the clock (or under the hidden-icons arrow).", "Tablet Pro Radial", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
             {
                 string installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "TabletProRadial", "@APP_VERSION@");
                 Process.Start(new ProcessStartInfo(Path.Combine(installed, "tabletpro_radial.exe"), "--radial") { WorkingDirectory = installed, UseShellExecute = true });

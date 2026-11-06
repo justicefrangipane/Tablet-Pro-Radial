@@ -29,7 +29,7 @@ git push origin main
 This uploads a **draft** release and verifies every asset's uploaded state, byte count, and GitHub SHA-256 digest. To upload, verify, and publish in the same invocation, add `-Publish`. To publish a previously reviewed draft:
 
 ```powershell
-gh release edit v0.3.7 --repo justicefrangipane/Tablet-Pro-Radial --draft=false --latest
+gh release edit v0.3.8 --repo justicefrangipane/Tablet-Pro-Radial --draft=false --latest
 ```
 
 Replace the example tag with the version just built. Never use fake newer releases to test the production feed. The updater requires a public stable `vMAJOR.MINOR.PATCH` release and the exact installer name `Tablet-Pro-Radial-MAJOR.MINOR.PATCH-Windows-x64-Setup.exe`.

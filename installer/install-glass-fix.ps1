@@ -73,6 +73,7 @@ try {
     foreach ($item in $shortcuts) {
         $shortcut = $shell.CreateShortcut($item.Path)
         $shortcut.TargetPath = Join-Path $installDir 'tabletpro_radial.exe'
+        $shortcut.IconLocation = (Join-Path $installDir 'tabletpro_radial.exe') + ',0'
         $shortcut.Arguments = $item.Args; $shortcut.WorkingDirectory = $installDir; $shortcut.Save()
     }
     $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\TabletProRadial-@APP_VERSION@'

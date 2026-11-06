@@ -1,6 +1,6 @@
-# Tablet Pro Radial 0.3.7
+# Tablet Pro Radial 0.3.8
 
-The blue radial icon beside the Windows clock stays available while the editor
+The bronze-and-ivory fan icon beside the Windows clock stays available while the editor
 and overlay are hidden. Windows may initially place it under the hidden-icons
 arrow. Click to show/hide the radial; right-click for Open editor, Updates, or Quit.
 Closing the editor keeps Radial available in the tray. Quit closes the application,

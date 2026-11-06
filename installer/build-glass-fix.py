@@ -42,7 +42,7 @@ shutil.copy2(project / 'docs/TRAY-AND-UPDATES.md', payload / 'READ-ME-FIRST.txt'
 shutil.copytree(project / 'examples', payload / 'examples', dirs_exist_ok=True)
 source_zip = payload / f'Tablet-Pro-Radial-{version}-Source.zip'
 with zipfile.ZipFile(source_zip, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-    for name in ['.github','app','core','platform','qml','shaders','ui','tests','scripts','installer','vendor','docs','examples']:
+    for name in ['.github','app','assets','core','platform','qml','shaders','ui','tests','scripts','installer','vendor','docs','examples']:
         for path in sorted((project / name).rglob('*')):
             if path.is_file() and '__pycache__' not in path.parts:
                 archive.write(path, 'Tablet-Pro-Radial/' + path.relative_to(project).as_posix())
@@ -63,6 +63,7 @@ hash_source = work / 'PayloadHash.cs'
 hash_source.write_text('internal static class PayloadHash { internal const string Value = "' + digest + '"; }\n')
 output = project / 'dist' / f'Tablet-Pro-Radial-{version}-Windows-x64-Setup.exe'
 subprocess.run([args.csc, '/nologo', '/target:winexe', '/platform:x64', '/optimize+',
+    '/win32icon:' + str(project / 'assets/radial.ico'),
     '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll',
     '/out:' + str(output), '/resource:' + str(bundle) + ',payload.zip',
     '/resource:' + str(work / 'install.ps1') + ',install.ps1',

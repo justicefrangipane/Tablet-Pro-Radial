@@ -14,16 +14,18 @@
 #include <QTextEdit>
 #include <QVBoxLayout>
 
+static void initializeBrandResources() { Q_INIT_RESOURCE(radial_brand); }
+
 namespace tabletpro {
 QIcon DesktopShell::icon(bool update) {
+    static const QIcon brand=[] { initializeBrandResources(); return QIcon(":/icons/radial.ico"); }();
+    if(!update)return brand;
     QIcon result;
-    for(const int size:{16,20,24,32,48,64}) {
-        QPixmap pix(size,size);pix.fill(Qt::transparent);QPainter p(&pix);p.setRenderHint(QPainter::Antialiasing);
-        p.scale(size/32.0,size/32.0);p.setPen(QPen(QColor("#99d6ff"),3.5,Qt::SolidLine,Qt::RoundCap));
-        for(int i=0;i<6;++i)p.drawArc(QRectF(4,4,24,24),(i*60+9)*16,42*16);
-        p.setPen(QPen(QColor("#e7f5ff"),1.7));p.drawEllipse(QPointF(16,16),3,3);
-        for(int i=0;i<4;++i){p.save();p.translate(16,16);p.rotate(i*90);p.drawLine(QPointF(0,5),QPointF(0,8));p.restore();}
-        if(update){p.setPen(Qt::NoPen);p.setBrush(QColor("#ffb456"));p.drawEllipse(QPointF(26,7),5,5);}
+    for(const int size:{16,20,24,32,40,48,64,96,128,256}) {
+        QPixmap pix=brand.pixmap(size,size);QPainter p(&pix);p.setRenderHint(QPainter::Antialiasing);
+        p.scale(size/32.0,size/32.0);p.setPen(QPen(QColor("#38281e"),1.5));
+        p.setBrush(QColor("#ffd08a"));p.drawEllipse(QPointF(26,7),4.5,4.5);
+        p.end();
         result.addPixmap(pix);
     }
     return result;
