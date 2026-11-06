@@ -1,10 +1,10 @@
-# Local candidate: 0.3.15
+# Current release: 0.3.15
 
 Editor buttons can be dragged from the outline or named child controls onto an existing parent in the outline or preview. Arrange buttons enables direct dragging in either the radial or docked preview; Done arranging restores gesture simulation. Drop feedback shows the target and validation result, and edge scrolling keeps lower list parents reachable. Mouse and touch drags, Escape cancellation, outside drops, edge scrolling, and single-step Undo are exercised through the actual QML.
 
 Reparenting preserves node/action IDs and entire descendant trees, empties only the source slot, and fills the first free destination slot. It does not update the applied runtime until Apply. Validation rejects self/descendant loops, full parents, invalid IDs, ordinary-action destinations, and excessive subtree depth. An emptied source parent remains editable, with guidance before Apply. Save/reload, subtree preservation, Undo/Redo, and rejected moves have controller coverage.
 
-This candidate includes the 0.3.14 parent-menu work below. Neither local candidate has been uploaded or published.
+This release includes the 0.3.14 parent-menu work below. Justice approved the prepared 0.3.15 notes and publication on November 6, 2026. All eight Windows suites, all 1,587 installer files, packaged startup checks, and GitHub's portable-core checks passed. The published installer, source archive, checksums, and exact notes were verified. The real updater downloaded and validated 0.3.15 from 0.3.13 and reported 0.3.15 as up to date. The earlier 0.3.14 local candidate was not separately published.
 
 # Parent-menu implementation: 0.3.14
 
@@ -14,7 +14,7 @@ The Windows pen-position observer filters pen-promoted mouse messages and maps t
 
 The editor offers Add parent, Add child, Make parent, named child slots, and Back to parent. Converting an action preserves it as the first child. Insertions fill empty slots, occupied slots select existing children, and Undo/Redo and save/load retain the tree. Four parent levels remain the limit.
 
-Verification covers hold timing, slide location, cancellation, independent pen/touch input through the actual QML, nested navigation, child modifiers, native Windows pen-coordinate mapping at the connected display scale, and editor persistence. Physical simultaneous pen/finger behavior in drawing applications and mixed-monitor devices still require acceptance testing. Publication and uploads remain pending Justice or Bassem's approval of the exact new notes.
+Verification covers hold timing, slide location, cancellation, independent pen/touch input through the actual QML, nested navigation, child modifiers, native Windows pen-coordinate mapping at the connected display scale, and editor persistence. Physical simultaneous pen/finger behavior in drawing applications and mixed-monitor devices still require acceptance testing. Future update notes require Justice or Bassem's approval before uploads or publication.
 
 # Published release: 0.3.13
 
