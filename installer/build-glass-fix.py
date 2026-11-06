@@ -14,6 +14,9 @@ import zipfile
 
 project = pathlib.Path(__file__).resolve().parent.parent
 version = re.search(r'project\(TabletProRadial VERSION ([0-9]+\.[0-9]+\.[0-9]+)', (project / 'CMakeLists.txt').read_text()).group(1)
+history = json.loads((project / 'docs/update-history.json').read_text(encoding='utf-8'))
+if not history.get('releases') or history['releases'][0].get('version') != version:
+    raise SystemExit('Add the current version to docs/update-history.json before packaging.')
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--payload', type=pathlib.Path, required=True)
 parser.add_argument('--csc', default=r'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe')

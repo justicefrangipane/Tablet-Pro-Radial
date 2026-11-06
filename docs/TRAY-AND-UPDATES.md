@@ -1,12 +1,19 @@
-# Tablet Pro Radial 0.3.8
+# Tablet Pro Radial 0.3.9
 
 The bronze-and-ivory fan icon beside the Windows clock stays available while the editor
 and overlay are hidden. Windows may initially place it under the hidden-icons
-arrow. Click to show/hide the radial; right-click for Open editor, Updates, or Quit.
+arrow. Click to show/hide the radial; right-click for Open editor, Updates, Update log, or Quit.
 Closing the editor keeps Radial available in the tray. Quit closes the application,
 removes its icon, and stops its pen listener and hotkey. Unapplied drafts offer
 Apply, Discard, or Keep editing before quitting. Updates and Quit are also in the
 editor's bottom bar. The Glass rendering fix from 0.3.2 is included.
+
+## Update log
+
+Choose **Update log** from the tray, editor's bottom bar, or Updates window.
+Select a version to see its release date and changes under New, Improved, and
+Fixed. The installed version is selected and marked. History from 0.3.4 onward
+is included with the app and can be read offline. Each new build extends it.
 
 ## Continuous rail
 

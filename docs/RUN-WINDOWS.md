@@ -1,6 +1,6 @@
 # Open the new radial menu
 
-This is the Windows x64 development build of Tablet Pro Radial 0.3.8. It contains Qt and the runtime dependencies used by the supplied pen-input library; no Qt installation or administrator setup is required.
+This is the Windows x64 development build of Tablet Pro Radial 0.3.9. It contains Qt and the runtime dependencies used by the supplied pen-input library; no Qt installation or administrator setup is required.
 
 1. Close the original Tablet Pro Studio and the 0.2 radial while testing 0.3. The installer leaves 0.2 available.
 2. Download the latest installer from [GitHub Releases](https://github.com/justicefrangipane/Tablet-Pro-Radial/releases/latest), then run `Tablet-Pro-Radial-VERSION-Windows-x64-Setup.exe` and follow the installer. Use its Start menu shortcuts to open the floating menu, docked rail, or editor. Use one copy at a time; quit the current copy before opening a different mode.
@@ -39,6 +39,6 @@ Glass uses a Windows Composition host-backdrop brush with clipped menu geometry,
 
 ## Validation limits
 
-The release build script runs the seven Windows test suites, verifies the installer payload, and runs the packaged editor/runtime smoke checks without Qt on PATH. Native modifier injection is tested against a disposable receiver. Physical pen input, focus behavior in drawing programs, mixed-DPI displays, and installation on another computer require device testing. The installer is unsigned.
+The release build script runs the eight Windows test suites, verifies the installer payload, and runs the packaged editor/runtime smoke checks without Qt on PATH. Native modifier injection is tested against a disposable receiver. Physical pen input, focus behavior in drawing programs, mixed-DPI displays, and installation on another computer require device testing. The installer is unsigned.
 
 The supplied Wacom bridge was not connected because it explicitly requires Studio to own keyboard focus. Direct Wacom background capture needs a different integration; use the driver shortcut route for this build.

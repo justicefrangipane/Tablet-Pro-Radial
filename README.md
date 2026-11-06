@@ -8,13 +8,15 @@ A native Windows radial menu and editor with pen-button invocation, a docked rai
 
 Open the latest release and download the file ending in **Windows-x64-Setup.exe**. Run it on each computer. Setup installs for your Windows account and includes the Qt runtime; administrator access and a separate Qt installation are not required. The installer is currently unsigned.
 
-The current application version is **0.3.8**. This is the version used by the installer and updater.
+The current application version is **0.3.9**. This is the version used by the installer and updater.
 
 ## Get updates
 
 Right-click the bronze-and-ivory fan icon beside the Windows clock and choose **Updates**, or use **Updates** in the editor. The same logo appears in the taskbar, Start menu shortcuts, app executable, and installer. The app is preconfigured for **justicefrangipane/Tablet-Pro-Radial**.
 
 Choose **Check now → Download update → Install update**. Automatic checks also notify you when a newer stable release is available. Downloads are checked against GitHub's SHA-256 digest before installation. Your saved menus and preferences are kept.
+
+Choose **Update log** from the tray, editor, or Updates window to browse changes by version. The installed version is marked, and the included history works offline. Changes are grouped under **New**, **Improved**, and **Fixed**.
 
 For the older 0.3.3 build, enter `justicefrangipane/Tablet-Pro-Radial` in its Updates dialog once, then check for updates. You can also install the latest release directly.
 
@@ -62,7 +64,7 @@ The docked **Continuous rail** keeps the tools and settings inside one 44 px hou
 
 ## Build and publish an update
 
-See the [release guide](docs/RELEASING.md). The Windows release uses Qt 6.11.1 / MinGW 13.1, plus Visual Studio C++ and the Windows SDK for the Glass bridge. Update the version in `CMakeLists.txt`, run the release build, then publish the verified installer with a matching `vMAJOR.MINOR.PATCH` tag.
+See the [release guide](docs/RELEASING.md). The Windows release uses Qt 6.11.1 / MinGW 13.1, plus Visual Studio C++ and the Windows SDK for the Glass bridge. Update the version in `CMakeLists.txt` and add its entry to `docs/update-history.json`, run the release build, then publish the verified installer with a matching `vMAJOR.MINOR.PATCH` tag. The bundled update log and default GitHub release notes use that same history file.
 
 Source is included in every installer and attached separately to each release. The repository contains the editable application source; generated builds and installers are release assets.
 

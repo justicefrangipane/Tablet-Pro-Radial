@@ -1,7 +1,7 @@
 #requires -Version 5.1
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)][string]$NotesFile,
+    [string]$NotesFile,
     [string]$Repository = 'justicefrangipane/Tablet-Pro-Radial',
     [string]$Gh = 'gh',
     [switch]$Publish
@@ -16,6 +16,13 @@ function GitHub([string[]]$Arguments) {
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $version = [regex]::Match((Get-Content -LiteralPath (Join-Path $root 'CMakeLists.txt') -Raw), 'project\(TabletProRadial VERSION (\d+\.\d+\.\d+)').Groups[1].Value
 $tag = 'v' + $version
+& (Join-Path $PSScriptRoot 'update-history.ps1') -Version $version
+if (-not $NotesFile) {
+    $notesDirectory = Join-Path $root 'build\release-notes'
+    New-Item -ItemType Directory -Path $notesDirectory -Force | Out-Null
+    $NotesFile = Join-Path $notesDirectory "$version.md"
+    & (Join-Path $PSScriptRoot 'update-history.ps1') -Version $version -OutputFile $NotesFile
+}
 $setup = Join-Path $root "dist\Tablet-Pro-Radial-$version-Windows-x64-Setup.exe"
 $checksums = Join-Path $root "dist\Tablet-Pro-Radial-$version-SHA256SUMS.txt"
 $source = Join-Path $root "dist\Tablet-Pro-Radial-$version\Tablet-Pro-Radial-$version-Source.zip"

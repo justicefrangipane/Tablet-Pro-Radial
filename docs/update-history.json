@@ -1,0 +1,86 @@
+{
+  "app": "Tablet Pro Radial",
+  "releases": [
+    {
+      "version": "0.3.9",
+      "date": "2026-11-05",
+      "title": "See what changed in every update",
+      "new": [
+        "An in-app update log lists changes by version, with the installed version clearly marked.",
+        "Open Update log from the tray, the editor's bottom bar, or the Updates window.",
+        "Read the included version history even without an internet connection."
+      ],
+      "improved": [
+        "New, improved, and fixed items are grouped so changes are easy to scan."
+      ]
+    },
+    {
+      "version": "0.3.8",
+      "date": "2026-11-05",
+      "title": "A new logo across Windows",
+      "new": [
+        "The bronze-and-ivory fan logo appears in the taskbar, Start menu, system tray, app, and installer."
+      ],
+      "improved": [
+        "The logo includes sizes for small tray icons and larger Windows shortcuts.",
+        "The tray keeps its update-available badge."
+      ]
+    },
+    {
+      "version": "0.3.7",
+      "date": "2026-11-05",
+      "title": "Gentle bloom opens settings",
+      "new": [
+        "Tap the ellipsis to fill settings with bronze, like liquid spreading into the menu.",
+        "The bloom spreads from the radial center or downward through the docked rail, revealing ivory icons."
+      ],
+      "improved": [
+        "The 760 ms animation stays within the existing menu outline; the dock remains 44 px wide.",
+        "Back or hide cancels the fill immediately. Reduced motion switches instantly.",
+        "Drawing actions pause during the fill, and settings become interactive when it finishes."
+      ]
+    },
+    {
+      "version": "0.3.6",
+      "date": "2026-11-05",
+      "title": "Modifier buttons and easier editing",
+      "new": [
+        "The default menu includes labeled Alt, Ctrl, and Shift buttons.",
+        "Hold a modifier to activate it. Drag out to keep it held for the current contact, then lift to release. Double-tap to keep it on until the next tap.",
+        "Choose Menu → Edit, then tap a button to open its inspector. Right-click also opens direct editing.",
+        "The radial's outer ring can switch to Dock, Edit, Sound, Glass, Hide, and Quit."
+      ],
+      "improved": [
+        "Held modifiers release when hiding the menu, opening the editor, changing target apps, or quitting.",
+        "Customized menus are preserved. Unchanged old defaults upgrade automatically; other profiles can use the undoable Use new default menu action."
+      ]
+    },
+    {
+      "version": "0.3.5",
+      "date": "2026-11-05",
+      "title": "The Continuous rail",
+      "new": [
+        "One slim 44 px housing holds the docked tools and settings.",
+        "The top ellipsis switches to bronze settings with ivory icons inside the same rail. Back restores the drawing tools."
+      ],
+      "improved": [
+        "Settings keep full-size pointer targets without opening a side panel.",
+        "Sound and Glass show a visible indicator when enabled.",
+        "Input and Glass boundaries follow the rail's narrow outline."
+      ]
+    },
+    {
+      "version": "0.3.4",
+      "date": "2026-11-05",
+      "title": "Download and update from GitHub",
+      "new": [
+        "The official GitHub update feed is preconfigured for Tablet Pro Radial.",
+        "Use Updates in the tray or editor to check, download, and install a newer release. Automatic checks can notify you when one is available."
+      ],
+      "improved": [
+        "Downloads are verified before installation.",
+        "The installer includes the runtime, matching source, and third-party notices while keeping saved menus and preferences."
+      ]
+    }
+  ]
+}

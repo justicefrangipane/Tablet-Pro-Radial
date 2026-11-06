@@ -18,6 +18,7 @@ function Run([string]$Program, [string[]]$Arguments) {
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $version = [regex]::Match((Get-Content -LiteralPath (Join-Path $root 'CMakeLists.txt') -Raw), 'project\(TabletProRadial VERSION (\d+\.\d+\.\d+)').Groups[1].Value
 if (-not $version) { throw 'Missing project version.' }
+& (Join-Path $PSScriptRoot 'update-history.ps1') -Version $version
 $build = Join-Path $root 'build\windows'
 $payload = Join-Path $root "dist\Tablet-Pro-Radial-$version"
 $setup = Join-Path $root "dist\Tablet-Pro-Radial-$version-Windows-x64-Setup.exe"

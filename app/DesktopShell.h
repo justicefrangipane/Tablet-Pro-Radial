@@ -17,6 +17,7 @@ public:
     bool trayAvailable() const { return m_trayAvailable; }
     static QIcon icon(bool update=false);
     Q_INVOKABLE void showUpdates();
+    Q_INVOKABLE void showUpdateLog();
     Q_INVOKABLE void requestQuit();
     Q_INVOKABLE void cancelQuit() { m_installPending=false; }
     Q_INVOKABLE void finishQuit();
@@ -32,6 +33,7 @@ private:
     QSystemTrayIcon m_tray;
     QMenu m_menu;
     QPointer<QDialog> m_dialog;
+    QPointer<QDialog> m_history;
     QTimer m_checkTimer;
     bool m_trayAvailable=false,m_installPending=false;
 };

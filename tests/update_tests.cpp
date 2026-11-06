@@ -17,6 +17,9 @@
 #include <QQuickItem>
 #include <QColor>
 #include <QMouseEvent>
+#include <QComboBox>
+#include <QDialog>
+#include <QTextBrowser>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <iostream>
@@ -138,6 +141,25 @@ void trayTests(){
     expect(exit==2&&!studio.dirty(),"discard explicit before quitting");
     quit->trigger();expect(exit==3,"clean quit immediate");
     expect(!DesktopShell::icon().pixmap(16,16).isNull(),"tray icon at small size");
+    auto* historyAction=shell.menu()->findChild<QAction*>("trayUpdateLog");expect(historyAction,"update log is available directly in the tray");
+    historyAction->trigger();QCoreApplication::processEvents();
+    QDialog* history=nullptr;for(auto* widget:QApplication::topLevelWidgets())if(widget->objectName()=="updateHistoryDialog")history=qobject_cast<QDialog*>(widget);
+    expect(history&&history->isVisible(),"offline update log opens");
+    auto* versions=history->findChild<QComboBox*>("historyVersionPicker");auto* content=history->findChild<QTextBrowser*>("historyContent");
+    expect(versions&&content&&versions->count()>=6,"bundled history includes the published versions");
+    expect(versions->currentText().contains(TABLETPRO_VERSION)&&versions->currentText().contains("Installed"),"history marks and selects the installed version");
+    expect(!content->toPlainText().trimmed().isEmpty()&&!content->toPlainText().contains("not available"),"current changes are readable without a network request");
+    expect(history->grab().save(QDir::currentPath()+"/update-log-current.png"),"current history renders");
+    int bloom=-1;for(int i=0;i<versions->count();++i)if(versions->itemText(i).startsWith("0.3.7"))bloom=i;
+    expect(bloom>=0,"older animation release is recorded");versions->setCurrentIndex(bloom);
+    expect(content->toPlainText().contains("Gentle bloom")&&content->toPlainText().contains("760 ms"),"version selection shows that version's changes");
+    expect(history->grab().save(QDir::currentPath()+"/update-log-older.png"),"older history renders");
+    history->resize(400,380);QCoreApplication::processEvents();
+    expect(versions->geometry().right()<=history->width()&&content->geometry().right()<=history->width(),"history fits a narrow window");
+    expect(history->grab().save(QDir::currentPath()+"/update-log-narrow.png"),"narrow history renders");
+    shell.showUpdateLog();int historyWindows=0;for(auto* widget:QApplication::topLevelWidgets())if(widget->objectName()=="updateHistoryDialog")++historyWindows;
+    expect(historyWindows==1,"reopening history reuses the existing window");
+    history->close();QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
     studio.runtime()->setReducedMotion(true);
     studio.runtime()->toggleDock();
     overlay->show();
@@ -215,7 +237,7 @@ void trayTests(){
 }
 }
 int main(int argc,char** argv){
-    QApplication app(argc,argv);app.setQuitOnLastWindowClosed(false);app.setOrganizationName("TabletProTests");app.setApplicationName("RadialUpdates");app.setApplicationVersion("0.3.3");QQuickStyle::setStyle("Basic");
+    QApplication app(argc,argv);app.setQuitOnLastWindowClosed(false);app.setOrganizationName("TabletProTests");app.setApplicationName("RadialUpdates");app.setApplicationVersion(TABLETPRO_VERSION);QQuickStyle::setStyle("Basic");
     QTemporaryDir settings;QStandardPaths::setTestModeEnabled(true);QSettings::setDefaultFormat(QSettings::IniFormat);QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,settings.path());
     try{parseTests();networkTests();trayTests();std::cout<<checks<<" tray/update checks passed\n";return 0;}catch(const std::exception& e){std::cerr<<"FAILED: "<<e.what()<<'\n';return 1;}
 }

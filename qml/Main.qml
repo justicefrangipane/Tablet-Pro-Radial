@@ -792,6 +792,7 @@ ApplicationWindow {
                 Rectangle { Layout.preferredWidth: 5; Layout.preferredHeight: 5; radius: 3; color: studio.error.length > 0 ? "#e6a59c" : "#7bafa0" }
                 Label { Layout.fillWidth: true; text: studio.error.length > 0 ? studio.error : studio.status; color: studio.error.length > 0 ? "#e6b2ab" : "#8399b0"; font.pixelSize: 10; elide: Text.ElideRight }
                 StudioButton { text: "Updates"; subtle: true; implicitHeight: 28; onClicked: desktop.showUpdates(); hint: "Check GitHub for a newer version" }
+                StudioButton { text: "Update log"; subtle: true; implicitHeight: 28; onClicked: desktop.showUpdateLog(); hint: "Read what changed in each version" }
                 StudioButton { text: "Quit"; subtle: true; implicitHeight: 28; onClicked: desktop.requestQuit(); hint: "Close Tablet Pro Radial completely" }
             }
         }

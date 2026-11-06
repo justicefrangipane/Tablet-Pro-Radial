@@ -1,4 +1,6 @@
-# Current release: 0.3.8
+# Current release: 0.3.9
+
+The offline Update log is available from the system tray, editor footer, and Updates window. A version picker marks the installed release and shows New, Improved, and Fixed changes for the selected version. The bundled history starts at 0.3.4. The release build requires a matching history entry, and the publisher generates GitHub notes from that entry by default. Native Windows rendering and 144 tray/update checks cover the history, selection, installed marker, narrow layout, and reopening behavior.
 
 The approved ivory fan-and-ring artwork is embedded as a multi-resolution Windows icon in the executable and installer. The application window, taskbar, system tray, and Start menu shortcuts use the same artwork. The tray retains its update-available badge. The icon source and conversion script are included with the application source.
 
