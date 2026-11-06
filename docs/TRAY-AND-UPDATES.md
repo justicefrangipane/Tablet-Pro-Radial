@@ -1,4 +1,4 @@
-# Tablet Pro Radial 0.3.13 candidate
+# Tablet Pro Radial 0.3.13
 
 The bronze-and-ivory fan icon beside the Windows clock stays available while the editor
 and overlay are hidden. Windows may initially place it under the hidden-icons

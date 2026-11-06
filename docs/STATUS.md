@@ -1,4 +1,4 @@
-# Current candidate: 0.3.13 (publication held)
+# Current release: 0.3.13
 
 Docked settings highlights use the control's background insets: 3 logical pixels on either side and 2 above/below each action. This keeps active, hover and pressed fills inside the continuous rail border while preserving the 44-by-44 pointer targets and active-state dots.
 
@@ -10,7 +10,7 @@ Glass diffuses smoothly beyond the body by 25% of its width (11 dock / 50.5 radi
 
 Closing settings reverses Gentle bloom from its current progress, in both layouts. Toggling during either direction continues from that frame with proportional duration. Tool and setting input stays blocked during the transition. Hide and docking changes clear animation state; Reduced motion and software rendering switch instantly.
 
-The candidate must pass the eight Windows suites, larger-scale rendering checks and packaged smoke/installer validation. Physical pen hardware and actual Crystal connect/disconnect remain acceptance checks. Exact candidate notes require Justice or Bassem approval before any posting or upload. The publisher checks the recorded approver and exact notes hash; no approval has been supplied for 0.3.13.
+The release passed all eight Windows suites, a larger-scale rail preview, packaged startup checks and verification of all 1,587 installer files. It was installed locally and its files matched the tested package. Justice authorized GitHub publication on November 6, 2026; the publisher verified the uploaded installer, source archive and checksums before making 0.3.13 the latest stable release. Physical pen hardware and actual Crystal connect/disconnect remain acceptance checks. Future update notes still require Justice or Bassem approval before posting or upload.
 
 # Previous release: 0.3.10
 

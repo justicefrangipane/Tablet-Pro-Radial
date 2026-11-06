@@ -8,7 +8,7 @@ A native Windows radial menu and editor with pen-button invocation, a docked rai
 
 Open the latest release and download the file ending in **Windows-x64-Setup.exe**. Run it on each computer. Setup installs for your Windows account and includes the Qt runtime; administrator access and a separate Qt installation are not required. The installer is currently unsigned.
 
-The current candidate is **0.3.13**. Publication is held until Justice or Bassem approves its exact update notes.
+The latest release is **[0.3.13](https://github.com/justicefrangipane/Tablet-Pro-Radial/releases/tag/v0.3.13)**, published November 6, 2026.
 
 ## Get updates
 
