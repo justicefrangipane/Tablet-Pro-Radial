@@ -52,7 +52,10 @@ try {
     $remote = GitHub @('api',"repos/$Repository/commits/$head",'--jq','.sha')
     if ($remote -ne $head) { throw 'Push the reviewed source commit before publishing.' }
     $null = GitHub @('release','create',$tag,'--repo',$Repository,'--target',$head,'--draft','--title',"Tablet Pro Radial $version",'--notes-file',(Resolve-Path -LiteralPath $NotesFile).ProviderPath,$setup,$source,$checksums)
-    $release = (GitHub @('api',"repos/$Repository/releases/tags/$tag")) | ConvertFrom-Json
+    # A draft's tag may not exist yet. Resolve its API URL through the CLI,
+    # which supports unpublished releases, then inspect the REST asset digests.
+    $releaseApi = GitHub @('release','view',$tag,'--repo',$Repository,'--json','apiUrl','--jq','.apiUrl')
+    $release = (GitHub @('api',$releaseApi)) | ConvertFrom-Json
     foreach ($path in @($setup,$source,$checksums)) {
         $asset = @($release.assets | Where-Object name -CEQ ([IO.Path]::GetFileName($path)))
         $digest = 'sha256:' + (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
