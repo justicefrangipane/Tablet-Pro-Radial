@@ -42,7 +42,7 @@ shutil.copy2(project / 'docs/TRAY-AND-UPDATES.md', payload / 'READ-ME-FIRST.txt'
 shutil.copytree(project / 'examples', payload / 'examples', dirs_exist_ok=True)
 source_zip = payload / f'Tablet-Pro-Radial-{version}-Source.zip'
 with zipfile.ZipFile(source_zip, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-    for name in ['.github','app','core','platform','qml','ui','tests','scripts','installer','vendor','docs','examples']:
+    for name in ['.github','app','core','platform','qml','shaders','ui','tests','scripts','installer','vendor','docs','examples']:
         for path in sorted((project / name).rglob('*')):
             if path.is_file() and '__pycache__' not in path.parts:
                 archive.write(path, 'Tablet-Pro-Radial/' + path.relative_to(project).as_posix())

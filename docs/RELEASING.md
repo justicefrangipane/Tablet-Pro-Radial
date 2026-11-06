@@ -4,7 +4,7 @@ Official repository: https://github.com/justicefrangipane/Tablet-Pro-Radial
 
 ## Build
 
-1. Increment `project(TabletProRadial VERSION ...)` in `CMakeLists.txt` and update the release notes. Never replace an installer already released with the same version.
+1. Increment `project(TabletProRadial VERSION ...)` in `CMakeLists.txt` and update the release notes. Never replace an installer already released with the same version. The Qt kit must include Shader Tools to compile the Gentle bloom shader; the compiled shader is embedded in the app.
 2. Install Qt 6.11.1 MinGW x64, MinGW 13.1, CMake, Ninja, Python 3, and Visual Studio C++ x64 tools plus Windows SDK. The Glass bridge uses MSVC; the main application uses MinGW.
 3. Supply a trusted previously installed or verified payload from the same Qt kit as `RuntimeTemplate`. Only its third-party notices and the three Microsoft runtime DLLs are reused; the app, Glass bridge, HID copy, and Qt deployment are rebuilt. Keep the associated notices with any updated dependency.
 4. Run from the repository root:
@@ -29,7 +29,7 @@ git push origin main
 This uploads a **draft** release and verifies every asset's uploaded state, byte count, and GitHub SHA-256 digest. To upload, verify, and publish in the same invocation, add `-Publish`. To publish a previously reviewed draft:
 
 ```powershell
-gh release edit v0.3.6 --repo justicefrangipane/Tablet-Pro-Radial --draft=false --latest
+gh release edit v0.3.7 --repo justicefrangipane/Tablet-Pro-Radial --draft=false --latest
 ```
 
 Replace the example tag with the version just built. Never use fake newer releases to test the production feed. The updater requires a public stable `vMAJOR.MINOR.PATCH` release and the exact installer name `Tablet-Pro-Radial-MAJOR.MINOR.PATCH-Windows-x64-Setup.exe`.

@@ -198,11 +198,11 @@ int main(int argc,char**argv) {
                         auto* mode=overlay->findChild<QObject*>("moreMenuButton");
                         auto* more=overlay->findChild<QObject*>("moreMenuButton");
                         const auto center=studio.runtime()->radialCenter();
-                        const bool centered=hub&&QLineF(hub->position()+QPointF(hub->width()/2,hub->height()/2),center).length()<1&&mode&&mode->property("glyph")=="radial";
+                        const bool centered=hub&&QLineF(hub->position()+QPointF(hub->width()/2,hub->height()/2),center).length()<1&&mode&&mode->property("glyph")=="more";
                         if(more)QMetaObject::invokeMethod(more,"clicked",Qt::DirectConnection);
                         const auto* morePanel=overlay->findChild<QQuickItem*>("settingsSurface");
-                        const bool overflow=morePanel&&morePanel->isVisible()&&!surface->isVisible()&&settingsSurface->buttons().size()==6;
-                        QEventLoop ringWait;QTimer::singleShot(260,&ringWait,&QEventLoop::quit);ringWait.exec();
+                        QEventLoop ringWait;QTimer::singleShot(1000,&ringWait,&QEventLoop::quit);ringWait.exec();
+                        const bool overflow=morePanel&&morePanel->isVisible()&&!surface->isVisible()&&settingsSurface->buttons().size()==6&&overlay->property("settingsReady").toBool();
                         overlay->grabWindow().save(output+"/runtime-more.png");
                         overlay->setProperty("menuOpen",false);
                         QMetaObject::invokeMethod(studio.stylus(),"sideButtonPressed",Qt::DirectConnection);
@@ -225,7 +225,7 @@ int main(int argc,char**argv) {
                             const bool narrowClosed=housing&&housing->width()==44&&overlay->mask().boundingRect().width()==44&&saveRail("runtime-rail-closed.png");
                             if(railToggle)QMetaObject::invokeMethod(railToggle,"clicked",Qt::DirectConnection);
                             QCoreApplication::processEvents();
-                            QEventLoop settle;QTimer::singleShot(260,&settle,&QEventLoop::quit);settle.exec();
+                            QEventLoop settle;QTimer::singleShot(1000,&settle,&QEventLoop::quit);settle.exec();
                             const auto* railPanel=overlay->findChild<QQuickItem*>("railSettingsPanel");
                             const bool narrowOpen=railPanel&&railPanel->isVisible()&&!surface->isVisible()&&overlay->mask().boundingRect().width()==44&&saveRail("runtime-rail-settings.png");
                             if(railToggle)QMetaObject::invokeMethod(railToggle,"clicked",Qt::DirectConnection);

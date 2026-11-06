@@ -194,7 +194,8 @@ void trayTests(){
     QMetaObject::invokeMethod(center,"clicked",Qt::DirectConnection);
     auto* ring=qobject_cast<RadialSurface*>(floatingOptions);
     expect(ring&&ring->isVisible()&&ring->buttons().size()==6&&!surface->isVisible(),"center replaces outer tools with six settings");
-    expect(ring->bronzeTheme()&&surface->bronzeTheme(),"radial uses bronze and ivory");
+    expect(ring->bronzeTheme()&&!surface->bronzeTheme(),"bronze settings contrast with the tool palette");
+    expect(overlay->property("bloomProgress").toDouble()==1,"software rendering switches settings immediately");
     QVariantMap editOption;
     for(const auto& value:ring->buttons())if(value.toMap()["id"]=="edit")editOption=value.toMap();
     const double ex=editOption["cx"].toDouble(),ey=editOption["cy"].toDouble();

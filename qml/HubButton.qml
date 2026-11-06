@@ -6,6 +6,7 @@ Button {
     property string hint: ""
     property bool reduceMotion: false
     property bool railStyle: false
+    property bool dimWhenDisabled: true
     property color iconColor: "#e0edfa"
     property color activeIconColor: "#b8dcff"
     property color hoverFill: "#344b66"
@@ -34,7 +35,7 @@ Button {
     contentItem: Canvas {
         id: icon
         implicitWidth: 22; implicitHeight: 22
-        opacity: control.enabled ? 1 : 0.35
+        opacity: control.enabled || !control.dimWhenDisabled ? 1 : 0.35
         onPaint: {
             var c = getContext("2d"); c.reset(); c.translate(width/2,height/2);
             c.strokeStyle = (control.highlighted ? control.activeIconColor : control.iconColor).toString(); c.fillStyle = c.strokeStyle;

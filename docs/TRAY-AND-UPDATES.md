@@ -1,4 +1,4 @@
-# Tablet Pro Radial 0.3.6
+# Tablet Pro Radial 0.3.7
 
 The blue radial icon beside the Windows clock stays available while the editor
 and overlay are hidden. Windows may initially place it under the hidden-icons
@@ -12,9 +12,14 @@ editor's bottom bar. The Glass rendering fix from 0.3.2 is included.
 
 The docked menu uses a single 44 px housing with fine separators. Tap the top
 ellipsis to replace the drawing tools with Send to radial, Edit, Sound, Glass,
-Hide, and Quit. The open settings use a bronze background and warm ivory icons;
+Hide, and Quit. Gentle bloom fills the rail downward from the ellipsis in 760 ms.
+The floating menu uses the same bloom spreading from its center. The open settings use a bronze background and warm ivory icons;
 the drawing tools retain their cool blue-gray appearance. Sound and Glass show
 an illuminated indicator when enabled. The back arrow restores the tools.
+
+The animation stays inside the existing outline. Drawing actions disable when
+the fill begins; settings become interactive when it finishes. Back or hide
+cancels the fill. Reduced motion and software rendering switch immediately.
 
 Both states have the same width, including the Windows input and glass boundary.
 Settings use 44 px targets and do not leave hidden drawing actions underneath.

@@ -1,6 +1,6 @@
 # Open the new radial menu
 
-This is the Windows x64 development build of Tablet Pro Radial 0.3.6. It contains Qt and the runtime dependencies used by the supplied pen-input library; no Qt installation or administrator setup is required.
+This is the Windows x64 development build of Tablet Pro Radial 0.3.7. It contains Qt and the runtime dependencies used by the supplied pen-input library; no Qt installation or administrator setup is required.
 
 1. Close the original Tablet Pro Studio and the 0.2 radial while testing 0.3. The installer leaves 0.2 available.
 2. Download the latest installer from [GitHub Releases](https://github.com/justicefrangipane/Tablet-Pro-Radial/releases/latest), then run `Tablet-Pro-Radial-VERSION-Windows-x64-Setup.exe` and follow the installer. Use its Start menu shortcuts to open the floating menu, docked rail, or editor. Use one copy at a time; quit the current copy before opening a different mode.

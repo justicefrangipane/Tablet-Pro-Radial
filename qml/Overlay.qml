@@ -13,6 +13,7 @@ Window {
     signal quitRequested()
     property bool menuOpen: false
     readonly property bool morphing: studio.runtime.transitioning
+    onMorphingChanged: { if(morphing)menuOpen=false; }
     readonly property bool childrenVisible: surface.visualBounds.width > 0
     property string resultMessage: ""
     readonly property bool railMode: studio.runtime.docked && !morphing
@@ -23,7 +24,29 @@ Window {
     readonly property color settingsHover: "#6a4c34"
     readonly property color settingsPressed: "#89613d"
     readonly property color settingsSelected: "#604329"
-    onMenuOpenChanged: resultMessage=""
+    property real bloomProgress: 0
+    readonly property bool settingsReady: menuOpen && bloomProgress >= 1
+    readonly property bool instantSettings: studio.reducedMotion || radialBloom.softwareRenderer
+    onMenuOpenChanged: {
+        resultMessage=""
+        settingsBloomAnimation.stop()
+        bloomProgress=0
+        if(menuOpen){
+            studio.runtime.releaseModifiers()
+            if(instantSettings || !visible)bloomProgress=1
+            else settingsBloomAnimation.start()
+        }
+    }
+    onInstantSettingsChanged: {
+        if(instantSettings && menuOpen){settingsBloomAnimation.stop();bloomProgress=1;}
+    }
+    NumberAnimation {
+        id: settingsBloomAnimation
+        objectName: "settingsBloomAnimation"
+        target: overlay; property: "bloomProgress"
+        from: 0; to: 1; duration: 760
+        easing.type: Easing.Linear
+    }
     property bool editingButtons: false
     property string editPressedId: ""
     function activateOption(key) {
@@ -42,7 +65,7 @@ Window {
             const angle=-Math.PI/2+i*Math.PI/3
             return {id:key,icon:key,caption:labels[i],slot:i,color:"#ad8055",angle:angle,
                 modifierState:(key==="sound"&&studio.soundEnabled)||(key==="glass"&&studio.backdropEnabled)?"held":"",
-                cx:studio.runtime.radialCenter.x+70*Math.cos(angle),cy:studio.runtime.radialCenter.y+70*Math.sin(angle)}
+                cx:97+70*Math.cos(angle),cy:97+70*Math.sin(angle)}
         })
     }
     onVisibleChanged: {
@@ -74,18 +97,18 @@ Window {
         visible: overlay.railMode
         gradient: Gradient {
             orientation: Gradient.Horizontal
-            GradientStop { position: 0; color: overlay.menuOpen ? "#f06b4b35" : studio.backdropEnabled ? "#a0374758" : "#354454" }
-            GradientStop { position: 0.3; color: overlay.menuOpen ? "#f050392b" : studio.backdropEnabled ? "#a5222e3c" : "#25313f" }
-            GradientStop { position: 1; color: overlay.menuOpen ? "#f52f241f" : studio.backdropEnabled ? "#c019222e" : "#19222e" }
+            GradientStop { position: 0; color: studio.backdropEnabled ? "#a0374758" : "#354454" }
+            GradientStop { position: 0.3; color: studio.backdropEnabled ? "#a5222e3c" : "#25313f" }
+            GradientStop { position: 1; color: studio.backdropEnabled ? "#c019222e" : "#19222e" }
         }
-        border.width: 1; border.color: overlay.menuOpen ? "#ad8055" : "#516577"
-        Rectangle { x: 1; y: 44; width: 42; height: 1; color: overlay.menuOpen ? "#946b46" : "#465969" }
+        border.width: 1; border.color: "#516577"
+        Rectangle { x: 1; y: 44; width: 42; height: 1; color: "#465969" }
         Repeater {
             model: 5
             Rectangle {
                 required property int index
                 x: 5; y: 91.5+index*51; width: 34; height: 1
-                color: overlay.menuOpen ? "#71513a" : "#304454"
+                color: "#304454"
             }
         }
     }
@@ -100,9 +123,9 @@ Window {
         reducedMotion: studio.reducedMotion
         glassEnabled: studio.backdropEnabled
         continuousRail: true
-        bronzeTheme: true
-        visible: !overlay.menuOpen
-        enabled: visible
+        bronzeTheme: false
+        visible: !overlay.settingsReady
+        enabled: !overlay.menuOpen
         onWidthChanged: studio.runtime.setViewport(width,height)
         onHeightChanged: studio.runtime.setViewport(width,height)
         Component.onCompleted: studio.runtime.setViewport(width,height)
@@ -123,41 +146,64 @@ Window {
         }
         onCanceled: studio.runtime.cancel()
     }
-    RadialSurface {
-        id: settingsSurface
-        objectName: "settingsSurface"
-        anchors.fill: parent
-        visible: overlay.menuOpen && !overlay.railMode
-        enabled: visible
-        buttons: overlay.options()
-        bronzeTheme: true
-        glassEnabled: studio.backdropEnabled
-        reducedMotion: studio.reducedMotion
-        property string pressedId: ""
-        onPressed: (pointerId,x,y) => { pressedId=hitRoot(x,y);selectedId=pressedId; }
-        onMoved: (pointerId,x,y) => { selectedId=hitRoot(x,y)===pressedId?pressedId:""; }
-        onReleased: (pointerId,x,y) => { const id=hitRoot(x,y);selectedId="";if(id.length&&id===pressedId)overlay.activateOption(id);pressedId=""; }
-        onCanceled: {selectedId="";pressedId="";}
-    }
     Rectangle {
+        x: hub.x; y: hub.y; width: hub.width; height: hub.height; radius: 38
+        visible: hub.visible && !overlay.settingsReady
+        z: -1
+        gradient: Gradient {
+            GradientStop { position: 0; color: "#354454" }
+            GradientStop { position: 0.45; color: "#25313f" }
+            GradientStop { position: 1; color: "#19222e" }
+        }
+        border.color: "#688297";border.width: 1
+        Rectangle { anchors.fill: parent;anchors.margins: 4;radius: width/2;color: "transparent";border.color: "#40516a7f" }
+    }
+    BloomLayer {
+        id: radialBloom
+        objectName: "radialSettingsBloom"
+        x: studio.runtime.radialCenter.x-97
+        y: studio.runtime.radialCenter.y-97
+        width: 194; height: 194
+        visible: overlay.menuOpen && !overlay.railMode
+        progress: overlay.bloomProgress
+        enabled: overlay.settingsReady
+        RadialSurface {
+            id: settingsSurface
+            objectName: "settingsSurface"
+            anchors.fill: parent
+            buttons: overlay.options()
+            bronzeTheme: true
+            glassEnabled: studio.backdropEnabled && overlay.settingsReady
+            reducedMotion: studio.reducedMotion
+            property string pressedId: ""
+            onPressed: (pointerId,x,y) => { pressedId=hitRoot(x,y);selectedId=pressedId; }
+            onMoved: (pointerId,x,y) => { selectedId=hitRoot(x,y)===pressedId?pressedId:""; }
+            onReleased: (pointerId,x,y) => { const id=hitRoot(x,y);selectedId="";if(id.length&&id===pressedId)overlay.activateOption(id);pressedId=""; }
+            onCanceled: {selectedId="";pressedId="";}
+        }
+        Rectangle {
+            x: 59; y: 59; width: 76; height: 76; radius: 38
+            gradient: Gradient {
+                GradientStop { position: 0; color: "#956b46" }
+                GradientStop { position: 0.45; color: "#583e2d" }
+                GradientStop { position: 1; color: "#30241e" }
+            }
+            border.color: "#d4ab78";border.width: 1
+            Rectangle { anchors.fill: parent;anchors.margins: 4;radius: width/2;color: "transparent";border.color: "#407f5b3e" }
+        }
+    }
+    Item {
         id: hub
         objectName: "overlayToolbar"
         x: studio.runtime.radialCenter.x-width/2
         y: studio.runtime.radialCenter.y-height/2
-        width: 76; height: 76; radius: 38
+        width: 76; height: 76
         visible: !studio.runtime.docked && !studio.runtime.active && !overlay.morphing && !overlay.childrenVisible
-        gradient: Gradient {
-            GradientStop { position: 0; color: "#956b46" }
-            GradientStop { position: 0.45; color: "#583e2d" }
-            GradientStop { position: 1; color: "#30241e" }
-        }
-        border.color: "#d4ab78";border.width: 1
-        Rectangle { anchors.fill: parent;anchors.margins: 4;radius: width/2;color: "transparent";border.color: "#407f5b3e" }
         HubButton {
             objectName: "moreMenuButton"
             anchors.fill: parent
             bottomPadding: 21
-            glyph: overlay.menuOpen || overlay.editingButtons ? "back" : "radial"
+            glyph: overlay.menuOpen || overlay.editingButtons ? "back" : "more"
             hint: overlay.editingButtons ? "Tap a button to edit. Tap center to cancel." : overlay.menuOpen ? "Back to tools" : "Menu settings and Edit buttons"
             iconColor: overlay.settingsInk
             hoverFill: "#306a4c34";pressedFill: "#807b5537"
@@ -165,6 +211,65 @@ Window {
             onClicked: {if(overlay.editingButtons)overlay.editingButtons=false;else overlay.menuOpen=!overlay.menuOpen;}
         }
         Text { anchors.horizontalCenter: parent.horizontalCenter;y: 47;text: overlay.editingButtons?"Edit":overlay.menuOpen?"Back":"Menu";color: overlay.settingsInk;font.pixelSize: 11;font.weight: Font.Medium }
+    }
+    BloomLayer {
+        id: railBloom
+        objectName: "railSettingsBloom"
+        x: railHousing.x; y: railHousing.y
+        width: 44; height: 347
+        visible: railHousing.visible && overlay.menuOpen
+        progress: overlay.bloomProgress
+        docked: true
+        Rectangle {
+            anchors.fill: parent;radius: 14
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: overlay.settingsReady ? "#f06b4b35" : "#6b4b35" }
+                GradientStop { position: 0.3; color: overlay.settingsReady ? "#f050392b" : "#50392b" }
+                GradientStop { position: 1; color: overlay.settingsReady ? "#f52f241f" : "#2f241f" }
+            }
+            border.width: 1;border.color: "#ad8055"
+            Rectangle { x: 1;y: 44;width: 42;height: 1;color: "#946b46" }
+            Repeater {
+                model: 5
+                Rectangle { required property int index;x: 5;y: 91.5+index*51;width: 34;height: 1;color: "#71513a" }
+            }
+        }
+        Item {
+            id: railSettings
+            objectName: "railSettingsPanel"
+            x: 0; y: 44
+            width: 44; height: 299
+            enabled: overlay.settingsReady
+            Repeater {
+                model: [
+                    { key: "radial", label: "Send to radial" },
+                    { key: "edit", label: "Edit buttons: choose a button" },
+                    { key: "sound", label: "Sound" },
+                    { key: "glass", label: "Glass background" },
+                    { key: "hide", label: "Hide menu" },
+                    { key: "quit", label: "Quit Radial Studio" }
+                ]
+                HubButton {
+                    required property int index
+                    required property var modelData
+                    objectName: "railAction_"+modelData.key
+                    x: 0; y: index*51; width: 44; height: 44
+                    glyph: modelData.key
+                    hint: modelData.label + (modelData.key==="sound" ? (studio.soundEnabled ? " (on)" : " (off)") : modelData.key==="glass" ? (studio.backdropEnabled ? " (on)" : " (off)") : "")
+                    railStyle: true
+                    iconColor: overlay.settingsInk
+                    activeIconColor: overlay.settingsActiveInk
+                    hoverFill: overlay.settingsHover
+                    pressedFill: overlay.settingsPressed
+                    selectedFill: overlay.settingsSelected
+                    reduceMotion: studio.reducedMotion
+                    dimWhenDisabled: false
+                    highlighted: modelData.key==="sound" ? studio.soundEnabled : modelData.key==="glass" ? studio.backdropEnabled : false
+                    onClicked: overlay.activateOption(modelData.key)
+                }
+            }
+        }
     }
     HubButton {
         objectName: "railSettingsButton"
@@ -178,40 +283,6 @@ Window {
         reduceMotion: studio.reducedMotion
         visible: railHousing.visible && !studio.runtime.active && !overlay.childrenVisible
         onClicked: {if(overlay.editingButtons)overlay.editingButtons=false;else overlay.menuOpen=!overlay.menuOpen;}
-    }
-    Item {
-        id: railSettings
-        objectName: "railSettingsPanel"
-        x: railHousing.x; y: railHousing.y+44
-        width: 44; height: 299
-        visible: railHousing.visible && overlay.menuOpen
-        Repeater {
-            model: [
-                { key: "radial", label: "Send to radial" },
-                { key: "edit", label: "Edit buttons: choose a button" },
-                { key: "sound", label: "Sound" },
-                { key: "glass", label: "Glass background" },
-                { key: "hide", label: "Hide menu" },
-                { key: "quit", label: "Quit Radial Studio" }
-            ]
-            HubButton {
-                required property int index
-                required property var modelData
-                objectName: "railAction_"+modelData.key
-                x: 0; y: index*51; width: 44; height: 44
-                glyph: modelData.key
-                hint: modelData.label + (modelData.key==="sound" ? (studio.soundEnabled ? " (on)" : " (off)") : modelData.key==="glass" ? (studio.backdropEnabled ? " (on)" : " (off)") : "")
-                railStyle: true
-                iconColor: overlay.settingsInk
-                activeIconColor: overlay.settingsActiveInk
-                hoverFill: overlay.settingsHover
-                pressedFill: overlay.settingsPressed
-                selectedFill: overlay.settingsSelected
-                reduceMotion: studio.reducedMotion
-                highlighted: modelData.key==="sound" ? studio.soundEnabled : modelData.key==="glass" ? studio.backdropEnabled : false
-                onClicked: overlay.activateOption(modelData.key)
-            }
-        }
     }
     Rectangle {
         id: result

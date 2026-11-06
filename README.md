@@ -8,7 +8,7 @@ A native Windows radial menu and editor with pen-button invocation, a docked rai
 
 Open the latest release and download the file ending in **Windows-x64-Setup.exe**. Run it on each computer. Setup installs for your Windows account and includes the Qt runtime; administrator access and a separate Qt installation are not required. The installer is currently unsigned.
 
-The current application version is **0.3.6**. This is the version used by the installer and updater.
+The current application version is **0.3.7**. This is the version used by the installer and updater.
 
 ## Get updates
 
@@ -20,7 +20,7 @@ For the older 0.3.3 build, enter `justicefrangipane/Tablet-Pro-Radial` in its Up
 
 ## Start using Radial
 
-Use **Ctrl+Alt+Space** or your configured pen button to show or hide the menu. Tap **Menu** in the bronze center to replace the outer ring with **Dock, Edit, Sound, Glass, Hide, and Quit**. Tap **Back** to return to tools. The settings stay within the original wheel footprint. Closing the editor leaves Radial in the tray; **Quit** exits the app. Use only one Radial or Tablet Pro Studio instance at a time to avoid overlapping pen shortcuts.
+Use **Ctrl+Alt+Space** or your configured pen button to show or hide the menu. Tap the center **ellipsis / Menu** to open **Dock, Edit, Sound, Glass, Hide, and Quit**. **Gentle bloom** spreads bronze from the center, revealing ivory settings in the existing outer ring over 760 ms. Tap **Back** to return to tools, including during the fill. The settings stay within the original wheel footprint. Closing the editor leaves Radial in the tray; **Quit** exits the app. Use only one Radial or Tablet Pro Studio instance at a time to avoid overlapping pen shortcuts.
 
 Save your custom menu with **Save test radial…**, and use **Apply draft** to activate editor changes. See [Windows quick start](docs/RUN-WINDOWS.md) and [tray and updates](docs/TRAY-AND-UPDATES.md).
 
@@ -36,7 +36,7 @@ For quick edits, choose **Menu → Edit**, then tap the button to open its inspe
 
 ![Bronze radial and settings ring](docs/images/bronze-radial.png)
 
-The docked **Continuous rail** keeps the tools and settings inside one 44 px housing. Tap **•••** at the top to switch to settings; the background turns bronze and the icons turn warm ivory. Settings replace the tool slots instead of opening a side panel. Tap the back arrow to return to drawing.
+The docked **Continuous rail** keeps the tools and settings inside one 44 px housing. Tap **•••** at the top: Gentle bloom flows downward from the ellipsis, filling the rail with bronze and revealing ivory settings. Tap the back arrow to return to drawing. Neither animation expands the menu or its input boundary. Settings become interactive when the fill finishes; underlying drawing actions are disabled as soon as it begins. **Reduced motion** and the software renderer switch immediately.
 
 <details>
 <summary>See the Continuous rail</summary>

@@ -1,6 +1,8 @@
-# Current release: 0.3.6
+# Current release: 0.3.7
 
-The floating center now opens bronze-and-ivory settings in the existing outer ring. Edit mode selects a button for its inspector; right-click also opens direct editing. The default main menu includes labeled Alt, Ctrl, and Shift with hold, drag-until-lift, and double-tap latch gestures. Customized profiles are preserved; exact old defaults migrate automatically, with an undoable default-menu action for other profiles.
+Gentle bloom now opens settings in both the floating radial and the docked Continuous rail. A 760 ms bronze fill spreads from the ellipsis and reveals the ivory settings inside the existing geometry. Back and hide cancel the animation; Reduced motion and software rendering switch instantly. Drawing actions are disabled throughout the fill, and settings enable only after it finishes. Hardware-rendered pixel checks cover both layouts, growing fill coverage, completion, unchanged bounds, cancellation, repeated toggles, and Reduced motion changes.
+
+The floating center opens bronze-and-ivory settings in the existing outer ring. Edit mode selects a button for its inspector; right-click also opens direct editing. The default main menu includes labeled Alt, Ctrl, and Shift with hold, drag-until-lift, and double-tap latch gestures. Customized profiles are preserved; exact old defaults migrate automatically, with an undoable default-menu action for other profiles.
 
 Validation adds modifier lifecycle, save/load, default migration, direct editing, actual Qt double-click events, and native Windows key injection into a separate test process. Physical stylus behavior and a second-computer install remain unverified. Logo exploration is separate from the application identity pending a final selection.
 
