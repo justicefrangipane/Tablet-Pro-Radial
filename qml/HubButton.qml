@@ -6,6 +6,9 @@ Button {
     property string hint: ""
     property bool reduceMotion: false
     property bool railStyle: false
+    property bool centerStyle: false
+    property bool railCap: false
+    property bool suppressHint: false
     property bool dimWhenDisabled: true
     property color iconColor: "#e0edfa"
     property color activeIconColor: "#b8dcff"
@@ -13,20 +16,29 @@ Button {
     property color pressedFill: "#526b8b"
     property color selectedFill: "#263e54"
     width: 30; height: 30
+    leftInset: railStyle ? (railCap ? 1 : 3) : 0
+    rightInset: leftInset
+    topInset: railStyle ? (railCap ? 1 : 2) : 0
+    bottomInset: railStyle && !railCap ? 2 : 0
     hoverEnabled: true
     focusPolicy: Qt.NoFocus
     Accessible.name: hint
-    ToolTip.visible: hovered
-    ToolTip.delay: 650
-    ToolTip.text: hint
+    HoverTip { anchorItem: control; text: control.hint; requested: control.hovered && !control.down && !control.suppressHint && control.enabled }
+    containmentMask: centerStyle ? circleMask : null
+    QtObject {
+        id: circleMask
+        function contains(point: point): bool { return Math.pow(point.x-control.width/2,2)+Math.pow(point.y-control.height/2,2)<=Math.pow(control.width/2,2); }
+    }
     onGlyphChanged: { icon.requestPaint(); if (!reduceMotion) turn.restart(); }
     onHighlightedChanged: icon.requestPaint()
     onIconColorChanged: icon.requestPaint()
     onActiveIconColorChanged: icon.requestPaint()
     background: Rectangle {
-        x: control.railStyle ? 1 : 0
-        width: control.width-(control.railStyle ? 2 : 0)
+        objectName: "hubHoverBackground"
+        visible: !control.centerStyle
         radius: control.railStyle ? 7 : 10
+        topLeftRadius: control.railCap ? 13 : radius
+        topRightRadius: control.railCap ? 13 : radius
         color: control.down ? control.pressedFill : control.hovered ? control.hoverFill : control.highlighted ? control.selectedFill : "transparent"
         border.width: control.hovered && !control.railStyle ? 1 : 0
         border.color: "#688ba9"
@@ -34,6 +46,7 @@ Button {
     }
     contentItem: Canvas {
         id: icon
+        objectName: "hubGlyph"
         implicitWidth: 22; implicitHeight: 22
         opacity: control.enabled || !control.dimWhenDisabled ? 1 : 0.35
         onPaint: {

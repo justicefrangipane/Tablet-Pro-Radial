@@ -17,10 +17,17 @@
 #include <QQuickItem>
 #include <QColor>
 #include <QMouseEvent>
+#include <QTabletEvent>
+#include <QTouchEvent>
+#include <QPointingDevice>
+#include <QtTest/qtesttouch.h>
 #include <QComboBox>
 #include <QDialog>
 #include <QPushButton>
 #include <QTextBrowser>
+#include <QLineF>
+#include <QTimer>
+#include <QScreen>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <iostream>
@@ -256,11 +263,63 @@ void trayTests(){
     const QPointF at(alt["cx"].toDouble(),alt["cy"].toDouble());
     const auto mouse=[&](QEvent::Type type){QMouseEvent event(type,at,at,Qt::LeftButton,type==QEvent::MouseButtonRelease?Qt::NoButton:Qt::LeftButton,Qt::NoModifier);QCoreApplication::sendEvent(surface,&event);};
     mouse(QEvent::MouseButtonPress);mouse(QEvent::MouseButtonRelease);
+    expect(studio.runtime()->heldModifiers().contains("Alt"),"floating tap arms the next pen stroke");
     mouse(QEvent::MouseButtonDblClick);mouse(QEvent::MouseButtonRelease);
-    expect(studio.runtime()->heldModifiers().contains("Alt"),"native double-click event reaches modifier latch");
+    expect(studio.runtime()->heldModifiers().isEmpty(),"second floating tap cancels armed modifier");
     mouse(QEvent::MouseButtonPress);mouse(QEvent::MouseButtonRelease);
-    expect(studio.runtime()->heldModifiers().isEmpty(),"next mouse tap releases latch");
+    studio.runtime()->finishNextStroke();
+    expect(studio.runtime()->heldModifiers().isEmpty(),"next pen stroke releases the floating modifier");
     auto* center=overlay->findChild<QObject*>("moreMenuButton");
+    auto* centerItem=qobject_cast<QQuickItem*>(center);
+    auto* glyph=center->findChild<QQuickItem*>("hubGlyph");
+    auto* hoverBackground=center->findChild<QQuickItem*>("hubHoverBackground");
+    expect(glyph&&hoverBackground&&!hoverBackground->isVisible(),"center has no rectangular hover highlight");
+    expect(QLineF(glyph->mapToItem(centerItem,{glyph->width()/2,glyph->height()/2}),{38,38}).length()<0.5,"ellipsis is centered in the inner circle");
+    expect(centerItem->contains({38,38})&&centerItem->contains({69,38})&&!centerItem->contains({2,2}),"drag hit area follows the circle rather than its square bounds");
+    overlay->resize(1200,900);QCoreApplication::processEvents();studio.runtime()->setRadialCenter(600,450);
+    quint64 stamp=1000;
+    const auto sendMouse=[&](QEvent::Type type,QPointF point){
+        QMouseEvent event(type,point,point,overlay->mapToGlobal(point.toPoint()),type==QEvent::MouseMove?Qt::NoButton:Qt::LeftButton,type==QEvent::MouseButtonRelease?Qt::NoButton:Qt::LeftButton,Qt::NoModifier);
+        event.setTimestamp(stamp+=20);QCoreApplication::sendEvent(overlay,&event);QCoreApplication::processEvents();
+    };
+    const QPointF start=studio.runtime()->radialCenter()+QPointF(25,0);
+    sendMouse(QEvent::MouseButtonPress,start);sendMouse(QEvent::MouseMove,start+QPointF(20,15));sendMouse(QEvent::MouseMove,start+QPointF(120,80));sendMouse(QEvent::MouseButtonRelease,start+QPointF(120,80));
+    expect(QLineF(studio.runtime()->radialCenter(),{720,530}).length()<1,"drag from any point inside center moves the radial without an initial jump");
+    expect(!overlay->property("menuOpen").toBool()&&!studio.runtime()->active(),"drag release neither opens settings nor dispatches a tool");
+    const auto tap=studio.runtime()->radialCenter();sendMouse(QEvent::MouseButtonPress,tap);sendMouse(QEvent::MouseButtonRelease,tap);
+    expect(overlay->property("menuOpen").toBool(),"tap after drag still opens settings");
+    sendMouse(QEvent::MouseButtonPress,tap);sendMouse(QEvent::MouseMove,tap+QPointF(-20,0));sendMouse(QEvent::MouseMove,tap+QPointF(-100,-60));sendMouse(QEvent::MouseButtonRelease,tap+QPointF(-100,-60));
+    expect(overlay->property("menuOpen").toBool()&&QLineF(studio.runtime()->radialCenter(),{620,470}).length()<1,"open settings move with the radial and stay open after dragging");
+    const auto back=studio.runtime()->radialCenter();sendMouse(QEvent::MouseButtonPress,back);sendMouse(QEvent::MouseButtonRelease,back);
+    expect(!overlay->property("menuOpen").toBool(),"center tap returns to tools after dragging settings");
+    QPointingDevice testPen("center test pen",3001,QInputDevice::DeviceType::Stylus,QPointingDevice::PointerType::Pen,QInputDevice::Capability::Position|QInputDevice::Capability::Pressure,1,1);
+    const auto pen=[&](QEvent::Type type,QPointF p){
+        const bool up=type==QEvent::TabletRelease;
+        QTabletEvent event(type,&testPen,p,overlay->mapToGlobal(p.toPoint()),up?0:0.5,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,up?Qt::NoButton:Qt::LeftButton);
+        event.setTimestamp(stamp+=20);QCoreApplication::sendEvent(overlay,&event);QCoreApplication::processEvents();
+    };
+    const auto penStart=studio.runtime()->radialCenter();
+    pen(QEvent::TabletPress,penStart);pen(QEvent::TabletMove,penStart+QPointF(20,10));pen(QEvent::TabletMove,penStart+QPointF(80,45));pen(QEvent::TabletRelease,penStart+QPointF(80,45));
+    expect(QLineF(studio.runtime()->radialCenter(),penStart+QPointF(80,45)).length()<1&&!overlay->property("menuOpen").toBool(),"stylus drags the center without opening settings");
+    auto* testFinger=QTest::createTouchDevice();
+    const auto touchStart=studio.runtime()->radialCenter().toPoint();
+    QTest::touchEvent(overlay,testFinger).press(1,touchStart,overlay);
+    QTest::touchEvent(overlay,testFinger).move(1,touchStart+QPoint(20,10),overlay);
+    QTest::touchEvent(overlay,testFinger).move(1,touchStart+QPoint(65,35),overlay);
+    QTest::touchEvent(overlay,testFinger).release(1,touchStart+QPoint(65,35),overlay);
+    expect(QLineF(studio.runtime()->radialCenter(),touchStart+QPointF(65,35)).length()<1&&!overlay->property("menuOpen").toBool(),"touch drags the center without opening settings");
+    studio.runtime()->moveRadialCenter(-999,-999);expect(studio.runtime()->radialCenter()==QPointF(104,104),"drag placement keeps the radial on screen near the edge");
+    auto* tip=overlay->findChild<QQuickWindow*>("centerHoverTip");expect(tip&&tip!=overlay,"tooltip has its own native window outside the overlay mask");
+    expect(tip->flags().testFlag(Qt::WindowStaysOnTopHint)&&tip->flags().testFlag(Qt::WindowDoesNotAcceptFocus)&&tip->flags().testFlag(Qt::WindowTransparentForInput),"tooltip is topmost without taking focus or pen input");
+    studio.runtime()->setRadialCenter(600,450);
+    QMetaObject::invokeMethod(tip,"reposition");
+    const auto centerGlobal=floatingHub->mapToGlobal({38,38});
+    expect(tip->y()+tip->height()<=centerGlobal.y()-101-8,"center tooltip sits fully above the radial outer edge with a gap");
+    overlay->setPosition({0,0});studio.runtime()->moveRadialCenter(600,104);
+    QMetaObject::invokeMethod(tip,"reposition");
+    const auto edgeGlobal=floatingHub->mapToGlobal({38,38});
+    expect(tip->y()>=edgeGlobal.y()+101+8,"top-edge placement puts the tooltip below the entire wheel instead of across buttons");
+    studio.runtime()->setRadialCenter(600,450);
     QMetaObject::invokeMethod(center,"clicked",Qt::DirectConnection);
     auto* ring=qobject_cast<RadialSurface*>(floatingOptions);
     expect(ring&&ring->isVisible()&&ring->buttons().size()==6&&!surface->isVisible(),"center replaces outer tools with six settings");

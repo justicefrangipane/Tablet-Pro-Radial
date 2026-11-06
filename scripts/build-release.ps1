@@ -53,7 +53,8 @@ try {
     if ($process.ExitCode -ne 0) { throw "Installer verification failed ($($process.ExitCode))." }
     $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
     $smoke = Join-Path $build 'release-smoke'
-    $process = Start-Process -FilePath (Join-Path $verify 'tabletpro_radial.exe') -ArgumentList @('--smoke','--runtime-smoke','--output',('"' + $smoke + '"')) -WindowStyle Hidden -Wait -PassThru
+    $process = Start-Process -FilePath (Join-Path $verify 'tabletpro_radial.exe') -ArgumentList @('--smoke','--runtime-smoke','--output',('"' + $smoke + '"')) -WindowStyle Hidden -PassThru
+    if (-not $process.WaitForExit(60000)) { $process.Kill(); throw 'The disposable packaged startup check exceeded 60 seconds.' }
     if ($process.ExitCode -ne 0) { throw "Packaged app smoke check failed ($($process.ExitCode))." }
     $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
     $hash + '  ' + [IO.Path]::GetFileName($setup) | Set-Content -LiteralPath (Join-Path $root "dist\Tablet-Pro-Radial-$version-SHA256SUMS.txt") -Encoding ASCII

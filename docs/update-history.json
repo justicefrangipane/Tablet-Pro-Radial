@@ -2,6 +2,52 @@
   "app": "Tablet Pro Radial",
   "releases": [
     {
+      "version": "0.3.13",
+      "date": "2026-11-06",
+      "title": "Neater rail highlights",
+      "fixed": [
+        "On, hover, and pressed highlights stay inside the docked settings rail, keeping its outer border visible. Button targets and on-state indicators stay the same."
+      ]
+    },
+    {
+      "version": "0.3.12",
+      "date": "2026-11-06",
+      "title": "Softer Glass and easier pen control",
+      "new": [
+        "Drag anywhere inside the radial's center circle to move it. Tap the centered ellipsis to open settings.",
+        "In floating radial mode, tap Alt, Ctrl, or Shift to hold it for your next pen stroke. Lifting the pen after that stroke releases it; tap the modifier again to cancel."
+      ],
+      "improved": [
+        "Closing settings reverses Gentle bloom toward the ellipsis in both radial and docked mode. Closing or reopening midway continues from the current animation frame.",
+        "Glass fades outward by one quarter of the menu body's width: about 11 pixels around the dock and 51 pixels around the radial. The clickable area stays the same.",
+        "Hiding the menu or pressing its pen button or shortcut releases held modifiers. Docked hold, drag, and double-tap controls are retained."
+      ],
+      "fixed": [
+        "Removed the rectangular hover highlight from the radial center. Its tooltip sits fully above the outer edge, or below the whole wheel near the screen top, keeping every button clear.",
+        "Inset the dock's top corners to prevent edge clipping.",
+        "Rebuild the menu's graphics, clipping, and Glass surface after display layout, scaling, or compositor changes."
+      ]
+    },
+    {
+      "version": "0.3.11",
+      "date": "2026-11-06",
+      "title": "Softer Glass and easier pen control",
+      "new": [
+        "Drag anywhere inside the radial's center circle to move it. Tap the centered ellipsis to open settings.",
+        "In floating radial mode, tap Alt, Ctrl, or Shift to hold it for your next pen stroke. Lifting the pen after that stroke releases it; tap the modifier again to cancel."
+      ],
+      "improved": [
+        "Closing settings reverses Gentle bloom toward the ellipsis in both radial and docked mode. Closing or reopening midway continues from the current animation frame.",
+        "Glass fades outward by one quarter of the menu body's width: about 11 pixels around the dock and 51 pixels around the radial. The clickable area stays the same.",
+        "Hiding the menu or pressing its pen button or shortcut releases held modifiers. Docked hold, drag, and double-tap controls are retained."
+      ],
+      "fixed": [
+        "Removed the rectangular hover highlight from the radial center and kept tooltips above the menu and inside the screen edges.",
+        "Inset the dock's top corners to prevent edge clipping.",
+        "Rebuild the menu's graphics, clipping, and Glass surface after display layout, scaling, or compositor changes."
+      ]
+    },
+    {
       "version": "0.3.10",
       "date": "2026-11-05",
       "title": "See what's new when an update opens",

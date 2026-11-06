@@ -29,15 +29,15 @@ constexpr wchar_t glassClass[] = L"TabletProRadialGlass032";
 
 struct CompositionApi {
     QLibrary library{QCoreApplication::applicationDirPath()+"/lib/TabletProGlass.dll"};
-    using Create=void*(__cdecl*)(HWND,const RECT*,unsigned,int,int,HRESULT*);
-    using Update=HRESULT(__cdecl*)(void*,const RECT*,unsigned,int,int);
+    using Create=void*(__cdecl*)(HWND,const RECT*,unsigned,int,int,float,HRESULT*);
+    using Update=HRESULT(__cdecl*)(void*,const RECT*,unsigned,int,int,float);
     using Destroy=void(__cdecl*)(void*);
     Create create=nullptr;Update update=nullptr;Destroy destroy=nullptr;
     CompositionApi(){
         library.setLoadHints(QLibrary::PreventUnloadHint);
         if(library.load()){
-            create=reinterpret_cast<Create>(library.resolve("TPGlass_Create"));
-            update=reinterpret_cast<Update>(library.resolve("TPGlass_Update"));
+            create=reinterpret_cast<Create>(library.resolve("TPGlass_CreateV2"));
+            update=reinterpret_cast<Update>(library.resolve("TPGlass_UpdateV2"));
             destroy=reinterpret_cast<Destroy>(library.resolve("TPGlass_Destroy"));
         }
     }
@@ -132,6 +132,8 @@ void BackdropEffect::configure(QQuickWindow* window)
     connect(m_window, &QObject::destroyed, this, [this] { clear(); });
     connect(m_window, &QQuickWindow::sceneGraphInitialized, this,
             [this] { refresh(); }, Qt::QueuedConnection);
+    connect(m_window, &QQuickWindow::sceneGraphInvalidated, this,
+            [this] { clear(); refresh(); }, Qt::QueuedConnection);
     refresh();
 }
 
@@ -139,6 +141,14 @@ void BackdropEffect::setEnabled(bool enabled)
 {
     m_enabled = enabled;
     refresh(); // Also updates mask geometry while enabled.
+}
+
+void BackdropEffect::setDiffusion(qreal distance)
+{
+    const qreal next = qBound(qreal(0), distance, qreal(100));
+    if (qFuzzyCompare(next + 1, m_diffusion + 1)) return;
+    m_diffusion = next;
+    refresh();
 }
 
 bool BackdropEffect::eventFilter(QObject* watched, QEvent* event)
@@ -195,7 +205,9 @@ void BackdropEffect::refresh()
     }
     const qreal scale = m_window->devicePixelRatio();
     const QRegion pixels = QTransform::fromScale(scale, scale).map(shape);
-    const QRect bounds = pixels.boundingRect();
+    const qreal diffusion = m_diffusion * scale;
+    const int padding = qCeil(diffusion);
+    const QRect bounds = pixels.boundingRect().adjusted(-padding,-padding,padding,padding);
     POINT origin{0, 0};
     if (bounds.isEmpty() || !ClientToScreen(overlay, &origin)) {
         clear();
@@ -210,11 +222,13 @@ void BackdropEffect::refresh()
             return;
         m_nativeHandle = reinterpret_cast<quintptr>(glass);
     }
-    const bool shapeChanged=!m_requestAccepted||clip!=m_nativeRegion;
+    const bool shapeChanged=!m_requestAccepted||clip!=m_nativeRegion||!qFuzzyCompare(diffusion+1,m_nativeDiffusion+1);
     // The HWND region limits hit testing. The compositor path below is what
     // actually clips the blur: a native region alone does not clip DWM acrylic.
     if (shapeChanged) {
-        const HRGN clipHandle = nativeRegion(clip);
+        // The decoration is input-transparent even throughout its diffusion.
+        // Composition clips each fading contour; Qt keeps the exact body mask.
+        const HRGN clipHandle = nativeRegion(padding ? QRegion(QRect(QPoint(),bounds.size())) : clip);
         if (!clipHandle) {
             clear();
             return;
@@ -232,8 +246,8 @@ void BackdropEffect::refresh()
         std::vector<RECT> rectangles;
         for(const QRect& r:clip)rectangles.push_back({r.x(),r.y(),r.x()+r.width(),r.y()+r.height()});
         HRESULT result=S_OK;
-        if(!m_composition)m_composition=api.create(glass,rectangles.data(),unsigned(rectangles.size()),bounds.width(),bounds.height(),&result);
-        else result=api.update(m_composition,rectangles.data(),unsigned(rectangles.size()),bounds.width(),bounds.height());
+        if(!m_composition)m_composition=api.create(glass,rectangles.data(),unsigned(rectangles.size()),bounds.width(),bounds.height(),float(diffusion),&result);
+        else result=api.update(m_composition,rectangles.data(),unsigned(rectangles.size()),bounds.width(),bounds.height(),float(diffusion));
         if(FAILED(result)||!m_composition){
             clear(); // Unsupported systems retain the painted translucent fill.
             return;
@@ -247,6 +261,7 @@ void BackdropEffect::refresh()
         return;
     }
     m_nativeGeometry = geometry;
+    m_nativeDiffusion = diffusion;
     m_requestAccepted = true;
     RedrawWindow(glass, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
 #else
@@ -267,6 +282,7 @@ void BackdropEffect::clear()
     m_nativeHandle = 0;
     m_nativeRegion = {};
     m_nativeGeometry = {};
+    m_nativeDiffusion = -1;
     m_requestAccepted = false;
 }
 

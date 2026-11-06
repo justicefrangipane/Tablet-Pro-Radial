@@ -9,6 +9,7 @@
 #include <QTimer>
 #include <QVector>
 #include <optional>
+#include "PenStrokeMonitor.h"
 
 namespace tabletpro {
 
@@ -48,6 +49,7 @@ public:
     Q_INVOKABLE void cancelQueuedAction();
     bool setModifierHeld(const QString& key, bool held, quintptr target = 0);
     void releaseModifiers();
+    bool armNextStroke(const QString& key);
     QStringList heldModifiers() const { return m_heldModifiers; }
     bool registerToggleHotkey();
     void unregisterToggleHotkey();
@@ -63,6 +65,7 @@ signals:
     void textSimulated(const QString& text);
     void actionDispatchFinished(bool success, const QString& error);
     void modifiersReleased();
+    void strokeModifiersReleased();
 
 private:
     struct QueuedAction {
@@ -95,6 +98,9 @@ private:
     // Only key-downs successfully inserted by this adapter may enter this ledger.
     QVector<quint32> m_ownedKeys;
     QStringList m_heldModifiers;
+    QStringList m_strokeModifiers;
+    PenStrokeMonitor m_penStroke;
+    quint64 m_strokeGeneration=0;
     quintptr m_modifierTarget = 0;
     quint32 m_modifierProcess = 0, m_modifierThread = 0;
     bool m_hotkeyRegistered = false;

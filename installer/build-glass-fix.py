@@ -49,7 +49,7 @@ with zipfile.ZipFile(source_zip, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as 
         for path in sorted((project / name).rglob('*')):
             if path.is_file() and '__pycache__' not in path.parts:
                 archive.write(path, 'Tablet-Pro-Radial/' + path.relative_to(project).as_posix())
-    for name in ['CMakeLists.txt','README.md','.gitignore']:
+    for name in ['CMakeLists.txt','README.md','.gitignore','AGENTS.md']:
         archive.write(project / name, 'Tablet-Pro-Radial/' + name)
 checksums = []
 for path in sorted(payload.rglob('*')):

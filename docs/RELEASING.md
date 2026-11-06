@@ -19,11 +19,13 @@ The installer contains the matching source archive and third-party notices. Revi
 
 ## Publish
 
-Install GitHub CLI and sign in to an account with write access to this repository. Commit and push the reviewed source first. By default, release notes are generated from the current entry in `docs/update-history.json`, the same data embedded in the app's offline Update log. An optional `-NotesFile` overrides the GitHub text; use a file outside the source tree or commit it before publishing.
+Before posting any further update, share the exact candidate release notes with Justice and obtain approval from Justice or Bassem (user instruction, November 6, 2026). Finish building and checking the concrete candidate first. Hold GitHub publication, release asset uploads and update-feed changes until that approval. Earlier release authorization does not approve new or changed notes.
+
+Install GitHub CLI and sign in to an account with write access to this repository. After approval, commit and push the reviewed source. By default, release notes are generated from the current entry in `docs/update-history.json`, the same data embedded in the app's offline Update log. An optional `-NotesFile` overrides the GitHub text; use a file outside the source tree or commit it before publishing. Record the approved file's SHA-256 and approver. The script refuses any upload without both, or if the notes have changed. These arguments record actual approval; they do not grant it.
 
 ```powershell
 git push origin main
-.\scripts\publish-release.ps1
+.\scripts\publish-release.ps1 -NotesFile 'C:\path\to\approved-notes.md' -ApprovedBy Justice -ApprovedNotesSha256 'SHA256_OF_THE_EXACT_APPROVED_FILE'
 ```
 
 This uploads a **draft** release and verifies every asset's uploaded state, byte count, and GitHub SHA-256 digest. To upload, verify, and publish in the same invocation, add `-Publish`. To publish a previously reviewed draft:

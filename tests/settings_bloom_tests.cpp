@@ -1,4 +1,6 @@
 #include "app/StudioController.h"
+#include "app/DisplayRecovery.h"
+#include "platform/BackdropEffect.h"
 #include "ui/RadialSurface.h"
 #include <QApplication>
 #include <QQmlApplicationEngine>
@@ -13,9 +15,15 @@
 #include <QTimer>
 #include <QDir>
 #include <QImage>
+#include <QPainterPath>
+#include <QScreen>
 #include <iostream>
 #include <stdexcept>
 #include <functional>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 
 namespace {
 int checks=0;
@@ -87,8 +95,20 @@ int main(int argc,char**argv){
             expect(!surface->isVisible()&&actions->isEnabled(),"finished settings replace tools and become interactive");
             expect(bronzePixels(capture("open"))>=last,"final frame is fully bronze");
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);
-            expect(!overlay->property("menuOpen").toBool()&&overlay->property("bloomProgress").toDouble()==0&&surface->isEnabled(),"Back immediately restores tools");
+            expect(!overlay->property("menuOpen").toBool()&&overlay->property("bloomProgress").toDouble()==1&&!surface->isEnabled()&&!actions->isEnabled(),"Back reverses from the fully open frame with input blocked");
+            expect(until([&]{return overlay->property("bloomProgress").toDouble()<.75;}),"closing bloom moves backward");
+            const int closingEarly=bronzePixels(capture("closing-early"));
+            expect(until([&]{return overlay->property("bloomProgress").toDouble()<.3;}),"closing bloom keeps contracting");
+            expect(bronzePixels(capture("closing-late"))<closingEarly,"rendered bronze recedes toward the ellipsis");
+            expect(until([&]{return overlay->property("toolsReady").toBool();})&&surface->isEnabled()&&!bloom->isVisible(),"tools enable only after reverse bloom finishes");
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);wait(100);
+            const double partial=overlay->property("bloomProgress").toDouble();
+            QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);
+            expect(partial>0&&partial<1&&overlay->property("bloomProgress").toDouble()==partial,"closing mid-fill reverses without resetting its current progress");
+            wait(35);const double reversing=overlay->property("bloomProgress").toDouble();
+            QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);
+            expect(overlay->property("bloomProgress").toDouble()==reversing,"reopening during reverse continues without a jump");
+            expect(until([&]{return overlay->property("settingsReady").toBool();}),"reopened bloom reaches its open endpoint");
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);wait(850);
             expect(!overlay->property("menuOpen").toBool()&&overlay->property("bloomProgress").toDouble()==0,"closing mid-fill cannot reopen from an old animation");
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);wait(90);overlay->hide();wait(850);
@@ -100,6 +120,40 @@ int main(int argc,char**argv){
             expect(overlay->property("settingsReady").toBool()&&!animation->property("running").toBool(),"enabling Reduced motion during a fill settles immediately");
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);studio.setReducedMotion(false);
         }
-        overlay->hide();std::cout<<checks<<" native settings bloom checks passed\n";return 0;
+        tabletpro::BackdropEffect backdrop;backdrop.configure(overlay);
+        tabletpro::DisplayRecovery recovery(overlay,studio.runtime(),&backdrop);
+        int refreshes=0;
+        const auto mask=[&]{
+            ++refreshes;
+            QPainterPath path;path.addRoundedRect(rail->mapRectToScene(rail->boundingRect()),14,14);
+            overlay->setMask(QRegion(path.toFillPolygon().toPolygon()));
+            backdrop.setDiffusion(11);
+            if(!recovery.pending())backdrop.setEnabled(true);
+        };
+        QObject::connect(&recovery,&tabletpro::DisplayRecovery::refreshMask,overlay,mask);
+        mask();wait(150);
+        const auto cropRail=[&]{
+            const auto frame=overlay->grabWindow();const auto r=rail->mapRectToScene(rail->boundingRect());const qreal s=frame.devicePixelRatio();
+            return frame.copy(QRectF(r.x()*s,r.y()*s,r.width()*s,r.height()*s).toAlignedRect());
+        };
+        const auto intact=cropRail();expect(!intact.isNull(),"dock pixels available before display reset");
+        const int initialRefreshes=refreshes;
+        for(const UINT kind:{WM_DISPLAYCHANGE,WM_DPICHANGED,WM_DWMCOMPOSITIONCHANGED}){
+            MSG message{};message.hwnd=reinterpret_cast<HWND>(overlay->winId());message.message=kind;qintptr result=0;
+            expect(!recovery.nativeEventFilter("windows_generic_MSG",&message,&result),"display observer leaves native messages available to Qt");
+        }
+        expect(!backdrop.requestAccepted(),"display change immediately removes stale Glass surface");
+        expect(until([&]{return !recovery.pending();}),"display changes settle and rebuild");wait(200);
+        expect(refreshes==initialRefreshes+2,"a burst of display changes produces one rebuild");
+        expect(overlay->isVisible()&&overlay->geometry()==overlay->screen()->availableGeometry(),"recovered overlay fits current screen work area");
+        expect(overlay->mask().boundingRect().width()==44&&backdrop.requestAccepted(),"dock mask and Glass return after display recovery");
+        const auto restored=cropRail();int different=0;
+        expect(restored.size()==intact.size(),"dock keeps its dimensions after graphics recovery");
+        for(int y=0;y<intact.height();++y)for(int x=0;x<intact.width();++x)if(restored.pixelColor(x,y)!=intact.pixelColor(x,y))++different;
+        expect(different<intact.width()*intact.height()/20,"dock artwork survives graphics reset without missing strips");
+        restored.save(out+"/rail-display-recovered.png");
+        recovery.requestRecovery();overlay->hide();wait(350);
+        expect(!overlay->isVisible()&&!backdrop.requestAccepted(),"pending recovery never reopens a user-hidden menu");
+        std::cout<<checks<<" native settings and display recovery checks passed\n";return 0;
     }catch(const std::exception& e){std::cerr<<"FAILED: "<<e.what()<<'\n';return 1;}
 }

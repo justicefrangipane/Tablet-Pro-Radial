@@ -24,9 +24,10 @@ MenuSession::MenuSession(bool simulation, WindowPlatform* platform, QObject* par
     : QObject(parent), platform_(platform), simulation_(simulation) {
     modifierClock_.start();
     if(!simulation_ && platform_) connect(platform_,&WindowPlatform::modifiersReleased,this,[this]{
-        heldModifiers_.clear();latchedModifiers_.clear();modifierPointer_.reset();lastTapKey_.clear();
+        heldModifiers_.clear();latchedModifiers_.clear();armedModifiers_.clear();modifierPointer_.reset();lastTapKey_.clear();
         emit geometryChanged();emit stateChanged();
     });
+    if(!simulation_ && platform_)connect(platform_,&WindowPlatform::strokeModifiersReleased,this,&MenuSession::finishNextStroke);
     connect(&animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) { progress_ = value.toReal(); emit geometryChanged(); });
     connect(&animation_, &QVariantAnimation::finished, this, [this] { status_ = docked_ ? "Docked · pull a group toward the canvas" : "Floating · pull outward to open a group"; emit stateChanged(); emit cue("snap"); });
     if (!simulation_ && platform_) connect(platform_, &WindowPlatform::targetLost, this, [this] { if (active() || !heldModifiers_.isEmpty()) { cancel(); status_ = "Canceled: the target application changed."; emit stateChanged(); } });
@@ -47,16 +48,16 @@ void MenuSession::setViewport(qreal width, qreal height) {
     if (!std::isfinite(width) || !std::isfinite(height) || width < 1 || height < 1 || (qFuzzyCompare(width_, width) && qFuzzyCompare(height_, height))) return;
     if (active()) cancel();
     width_ = width; height_ = height;
-    if (radialAnchor_) radialAnchor_ = boundedRadialCenter(*radialAnchor_);
+    if (radialAnchor_) radialAnchor_ = boundedRadialCenter(*radialAnchor_, !draggedAnchor_);
     emit geometryChanged();
 }
 QPointF MenuSession::radialCenter() const {
     return radialAnchor_.value_or(QPointF(width_/2, height_/2));
 }
-QPointF MenuSession::boundedRadialCenter(QPointF center) const {
+QPointF MenuSession::boundedRadialCenter(QPointF center, bool leaveFanRoom) const {
     // Leave room for a root, the opening gate, a first-level child, and its hit area.
-    const qreal fanMargin = std::ceil(70 + radial::GestureEngine::OpenThreshold +
-        radial::GestureEngine::ChildOuterRadius*radial::GestureEngine::ChildVisualOvershoot + FanViewportMargin);
+    const qreal fanMargin = leaveFanRoom ? std::ceil(70 + radial::GestureEngine::OpenThreshold +
+        radial::GestureEngine::ChildOuterRadius*radial::GestureEngine::ChildVisualOvershoot + FanViewportMargin) : 104;
     const qreal marginX = std::min(fanMargin, width_/2);
     const qreal marginY = std::min(fanMargin, height_/2);
     return {std::clamp(center.x(), marginX, width_-marginX),
@@ -68,7 +69,14 @@ void MenuSession::setRadialCenter(qreal x, qreal y) {
     const bool changed = center != radialCenter();
     if (changed && active()) cancel();
     radialAnchor_ = center;
+    draggedAnchor_ = false;
     if (changed) emit geometryChanged();
+}
+void MenuSession::moveRadialCenter(qreal x, qreal y) {
+    if(active() || docked_ || transitioning() || !std::isfinite(x) || !std::isfinite(y))return;
+    const auto center=boundedRadialCenter({x,y},false);
+    const bool changed=center!=radialCenter();radialAnchor_=center;draggedAnchor_=true;
+    if(changed)emit geometryChanged();
 }
 void MenuSession::setDurationMs(int value) { durationMs_ = std::clamp(value, 250, 2400); emit preferencesChanged(); }
 void MenuSession::setReducedMotion(bool reduced) {
@@ -109,6 +117,7 @@ QString MenuSession::selectedId() const {
 }
 void MenuSession::toggleDock() {
     if (active() || animation_.state() == QAbstractAnimation::Running) return;
+    releaseModifiers();
     docked_ = !docked_;
     if (reduced_) { progress_ = docked_ ? 1 : 0; status_ = docked_ ? "Docked" : "Floating"; emit geometryChanged(); emit stateChanged(); return; }
     animation_.setStartValue(progress_); animation_.setEndValue(docked_ ? 1.0 : 0.0); animation_.setDuration(durationMs_);
@@ -189,7 +198,17 @@ void MenuSession::pointerReleased(int pointerId, qreal x, qreal y) {
         pointerMoved(pointerId,x,y);
         if(!modifierPointer_)return;
         const auto now=modifierClock_.elapsed();
-        const bool tap=!modifierDragged_ && !releasingLatch_ && now-pressedAt_<=250;
+        const bool tap=!modifierDragged_ && !releasingLatch_ && now-pressedAt_<=(docked_?250:450);
+        if(!docked_ && tap){
+            lastTapKey_.clear();
+            if(simulation_ || (platform_ && platform_->armNextStroke(modifierKey_))){
+                if(!armedModifiers_.contains(modifierKey_))armedModifiers_.append(modifierKey_);
+                status_=modifierKey_+" · next pen stroke · tap again to cancel";
+            }else{
+                const auto error=platform_->lastError();holdModifier(modifierKey_,false);status_=error;emit actionReported(error);
+            }
+            modifierPointer_.reset();engine_.cancel();emit geometryChanged();finish();return;
+        }
         const bool twice=tap && lastTapKey_==modifierKey_ && pressedAt_-lastTapAt_<=400;
         if(twice){latchedModifiers_.append(modifierKey_);lastTapKey_.clear();status_=modifierKey_+" stays on · tap to release";}
         else {
@@ -241,30 +260,37 @@ void MenuSession::finish() {
 QString MenuSession::modifierState(const radial::Node& node) const {
     if(node.action.kind!=radial::ActionKind::Modifier)return {};
     const auto key=QString::fromStdString(node.action.key);
-    return latchedModifiers_.contains(key)?"latched":heldModifiers_.contains(key)?(modifierDragged_ && modifierKey_==key?"dragged":"held"):"";
+    return armedModifiers_.contains(key)?"armed":latchedModifiers_.contains(key)?"latched":heldModifiers_.contains(key)?(modifierDragged_ && modifierKey_==key?"dragged":"held"):"";
 }
 bool MenuSession::holdModifier(const QString& key, bool held) {
     if(!simulation_ && platform_ && !platform_->setModifierHeld(key,held,gestureTarget_)){
         status_=platform_->lastError();emit actionReported(status_);return false;
     }
     if(held){if(!heldModifiers_.contains(key))heldModifiers_.append(key);}
-    else {heldModifiers_.removeAll(key);latchedModifiers_.removeAll(key);}
+    else {heldModifiers_.removeAll(key);latchedModifiers_.removeAll(key);armedModifiers_.removeAll(key);}
     return true;
 }
 bool MenuSession::beginModifier(const radial::Node& node, int pointerId, QPointF point, bool fromFan) {
     modifierKey_=QString::fromStdString(node.action.key);modifierNode_=QString::fromStdString(node.id);
-    releasingLatch_=latchedModifiers_.contains(modifierKey_);
+    releasingLatch_=latchedModifiers_.contains(modifierKey_)||armedModifiers_.contains(modifierKey_);
     if(!holdModifier(modifierKey_,!releasingLatch_)){engine_.cancel();finish();return false;}
     modifierPointer_=pointerId;modifierStart_=point;pressedAt_=modifierClock_.elapsed();modifierDragged_=fromFan;
-    status_=modifierKey_+(releasingLatch_?" released":" held · drag out to lock until lift");
+    status_=modifierKey_+(releasingLatch_?" released":docked_?" held · drag out to lock until lift":" held · tap to use for the next pen stroke");
     emit geometryChanged();emit stateChanged();return true;
 }
 void MenuSession::releaseModifiers() {
-    modifierPointer_.reset();lastTapKey_.clear();
+    modifierPointer_.reset();lastTapKey_.clear();armedModifiers_.clear();
     if(!simulation_ && platform_){
         platform_->releaseModifiers();heldModifiers_=platform_->heldModifiers();
         latchedModifiers_=heldModifiers_;
     } else {heldModifiers_.clear();latchedModifiers_.clear();}
+    emit geometryChanged();emit stateChanged();
+}
+void MenuSession::finishNextStroke() {
+    if(simulation_){for(const auto& key:armedModifiers_)heldModifiers_.removeAll(key);}
+    else if(platform_)heldModifiers_=platform_->heldModifiers();
+    for(const auto& key:armedModifiers_)if(heldModifiers_.contains(key)&&!latchedModifiers_.contains(key))latchedModifiers_.append(key);
+    armedModifiers_.clear();status_=heldModifiers_.isEmpty()?"Pen stroke finished · modifiers released":"Tap the modifier to retry release";
     emit geometryChanged();emit stateChanged();
 }
 void MenuSession::cancel() {

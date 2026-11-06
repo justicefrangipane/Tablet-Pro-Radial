@@ -414,8 +414,8 @@ void modifierTests(const QString& directory) {
     }
     auto invalid=profile;invalid.nodes.at("modifier.Alt").action.key="Meta";
     check(!radial::validate(invalid).empty(),"unsupported held key rejected");
-    MenuSession session(true,nullptr);session.setProfile(profile);
-    const auto alt=button(session,"modifier.Alt");const double x=alt["cx"].toDouble(),y=alt["cy"].toDouble();
+    MenuSession session(true,nullptr);session.setProfile(profile);session.setReducedMotion(true);session.toggleDock();
+    const auto alt=button(session,"modifier.Alt");const double x=alt["dockX"].toDouble(),y=alt["dockY"].toDouble();
     const auto press=[&]{session.pointerPressed(11,x,y);};
     const auto lift=[&]{session.pointerReleased(11,x,y);};
     const auto state=[&]{return button(session,"modifier.Alt")["modifierState"].toString();};
@@ -427,12 +427,12 @@ void modifierTests(const QString& directory) {
     press();session.pointerMoved(11,x+90,y);check(state()=="dragged"&&session.heldModifiers().contains("Alt"),"drag-out keeps key held and shows contact lock");
     session.pointerReleased(11,x+90,y);check(session.heldModifiers().isEmpty()&&state().isEmpty(),"drag lock releases on stylus lift");
     press();lift();press();lift();
-    const auto ctrl=button(session,"modifier.Ctrl");const double cx=ctrl["cx"].toDouble(),cy=ctrl["cy"].toDouble();
+    const auto ctrl=button(session,"modifier.Ctrl");const double cx=ctrl["dockX"].toDouble(),cy=ctrl["dockY"].toDouble();
     session.pointerPressed(12,cx,cy);check(session.heldModifiers().size()==2,"latched modifier can combine with another held modifier");
     session.pointerReleased(12,cx,cy);check(session.heldModifiers()==QStringList{"Alt"},"lifting second modifier preserves latched first key");
     session.cancel();check(session.heldModifiers().isEmpty(),"cancel releases latched keys");
     press();session.setViewport(720,600);check(session.heldModifiers().isEmpty(),"viewport interruption releases held key");
-    session.setReducedMotion(true);session.toggleDock();
+    session.cancel();
     const auto tools=button(session,"tools");const double tx=tools["dockX"].toDouble(),ty=tools["dockY"].toDouble();
     session.pointerPressed(13,tx,ty);session.pointerMoved(13,tx+42,ty);
     check(session.childButtons().size()==4,"new default Tools opens retained groups");
@@ -441,6 +441,16 @@ void modifierTests(const QString& directory) {
     session.pointerMoved(13,text["cx"].toDouble()+42*std::cos(ax),text["cy"].toDouble()+42*std::sin(ax));
     check(session.childButtons().size()==6,"new default retains nested Text commands");
     session.cancel();
+    session.toggleDock();
+    const auto tapKey=[&](const char* key){const auto b=button(session,QString("modifier.")+key);const auto px=b["cx"].toDouble(),py=b["cy"].toDouble();session.pointerPressed(51,px,py);session.pointerReleased(51,px,py);};
+    tapKey("Alt");
+    check(session.heldModifiers()==QStringList{"Alt"}&&state()=="armed","floating tap arms modifier after selection lift");
+    tapKey("Alt");check(session.heldModifiers().isEmpty(),"second floating tap cancels instead of latching indefinitely");
+    tapKey("Alt");tapKey("Ctrl");tapKey("Shift");
+    check(session.heldModifiers().size()==3,"floating modifiers can combine for one stroke");
+    session.finishNextStroke();check(session.heldModifiers().isEmpty()&&!session.active(),"pen-up ends all next-stroke modifiers");
+    tapKey("Alt");session.cancel();check(session.heldModifiers().isEmpty(),"hide and cancellation release armed modifiers");
+    tapKey("Ctrl");session.toggleDock();check(session.heldModifiers().isEmpty(),"docking releases next-stroke modifiers");
     const auto legacy=radial::legacyDefaultProfile();
     QDir().mkpath(directory+"/legacy");writeBytes(directory+"/legacy/applied.radial.json",encodeProfile(legacy));
     StudioController upgraded(nullptr,directory+"/legacy",true);

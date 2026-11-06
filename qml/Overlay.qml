@@ -13,7 +13,7 @@ Window {
     signal quitRequested()
     property bool menuOpen: false
     readonly property bool morphing: studio.runtime.transitioning
-    onMorphingChanged: { if(morphing)menuOpen=false; }
+    onMorphingChanged: { if(morphing){menuOpen=false;settingsBloomAnimation.stop();bloomProgress=0;} }
     readonly property bool childrenVisible: surface.visualBounds.width > 0
     property string resultMessage: ""
     readonly property bool railMode: studio.runtime.docked && !morphing
@@ -26,19 +26,25 @@ Window {
     readonly property color settingsSelected: "#604329"
     property real bloomProgress: 0
     readonly property bool settingsReady: menuOpen && bloomProgress >= 1
+    readonly property bool settingsVisible: menuOpen || bloomProgress > 0
+    readonly property bool toolsReady: !menuOpen && bloomProgress <= 0
     readonly property bool instantSettings: studio.reducedMotion || radialBloom.softwareRenderer
     onMenuOpenChanged: {
         resultMessage=""
+        const current=bloomProgress
+        const goal=menuOpen ? 1 : 0
         settingsBloomAnimation.stop()
-        bloomProgress=0
-        if(menuOpen){
-            studio.runtime.releaseModifiers()
-            if(instantSettings || !visible)bloomProgress=1
-            else settingsBloomAnimation.start()
-        }
+        if(menuOpen)studio.runtime.releaseModifiers()
+        if(instantSettings || !visible || morphing)bloomProgress=goal
+        else if(Math.abs(goal-current)>0.0001){
+            settingsBloomAnimation.from=current
+            settingsBloomAnimation.to=goal
+            settingsBloomAnimation.duration=Math.max(1,Math.round(760*Math.abs(goal-current)))
+            settingsBloomAnimation.start()
+        }else bloomProgress=goal
     }
     onInstantSettingsChanged: {
-        if(instantSettings && menuOpen){settingsBloomAnimation.stop();bloomProgress=1;}
+        if(instantSettings){settingsBloomAnimation.stop();bloomProgress=menuOpen ? 1 : 0;}
     }
     NumberAnimation {
         id: settingsBloomAnimation
@@ -70,6 +76,7 @@ Window {
     }
     onVisibleChanged: {
         menuOpen = false; editingButtons=false; resultMessage = "";
+        settingsBloomAnimation.stop();bloomProgress=0;
         if (visible) studio.runtime.setViewport(surface.width,surface.height);
         else studio.runtime.cancel();
     }
@@ -89,12 +96,14 @@ Window {
         }
     }
     Timer { id: resultTimer; interval: 3600; onTriggered: overlay.resultMessage="" }
-    Rectangle {
+    Item {
         id: railHousing
         objectName: "overlayRail"
         x: overlay.railX; y: overlay.railY
-        width: 44; height: 347; radius: 14
+        width: 44; height: 347
         visible: overlay.railMode
+        Rectangle {
+        anchors.fill: parent; anchors.margins: 1; radius: 13
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop { position: 0; color: studio.backdropEnabled ? "#a0374758" : "#354454" }
@@ -102,6 +111,7 @@ Window {
             GradientStop { position: 1; color: studio.backdropEnabled ? "#c019222e" : "#19222e" }
         }
         border.width: 1; border.color: "#516577"
+        }
         Rectangle { x: 1; y: 44; width: 42; height: 1; color: "#465969" }
         Repeater {
             model: 5
@@ -124,8 +134,8 @@ Window {
         glassEnabled: studio.backdropEnabled
         continuousRail: true
         bronzeTheme: false
-        visible: !overlay.settingsReady
-        enabled: !overlay.menuOpen
+        visible: overlay.bloomProgress < 1
+        enabled: overlay.toolsReady
         onWidthChanged: studio.runtime.setViewport(width,height)
         onHeightChanged: studio.runtime.setViewport(width,height)
         Component.onCompleted: studio.runtime.setViewport(width,height)
@@ -148,7 +158,7 @@ Window {
     }
     Rectangle {
         x: hub.x; y: hub.y; width: hub.width; height: hub.height; radius: 38
-        visible: hub.visible && !overlay.settingsReady
+        visible: hub.visible && overlay.bloomProgress < 1
         z: -1
         gradient: Gradient {
             GradientStop { position: 0; color: "#354454" }
@@ -164,7 +174,7 @@ Window {
         x: studio.runtime.radialCenter.x-97
         y: studio.runtime.radialCenter.y-97
         width: 194; height: 194
-        visible: overlay.menuOpen && !overlay.railMode
+        visible: overlay.settingsVisible && !overlay.railMode
         progress: overlay.bloomProgress
         enabled: overlay.settingsReady
         RadialSurface {
@@ -199,29 +209,61 @@ Window {
         y: studio.runtime.radialCenter.y-height/2
         width: 76; height: 76
         visible: !studio.runtime.docked && !studio.runtime.active && !overlay.morphing && !overlay.childrenVisible
+        containmentMask: QtObject {
+            function contains(point: point): bool { return Math.pow(point.x-38,2)+Math.pow(point.y-38,2)<=38*38; }
+        }
+        Accessible.role: Accessible.Button
+        Accessible.name: centerButton.hint
         HubButton {
+            id: centerButton
             objectName: "moreMenuButton"
             anchors.fill: parent
-            bottomPadding: 21
+            padding: 0
+            centerStyle: true
+            enabled: false
+            dimWhenDisabled: false
             glyph: overlay.menuOpen || overlay.editingButtons ? "back" : "more"
-            hint: overlay.editingButtons ? "Tap a button to edit. Tap center to cancel." : overlay.menuOpen ? "Back to tools" : "Menu settings and Edit buttons"
+            hint: overlay.editingButtons ? "Tap to cancel editing · drag to move" : overlay.menuOpen ? "Tap to return to tools · drag to move" : "Tap for settings · drag to move"
             iconColor: overlay.settingsInk
             hoverFill: "#306a4c34";pressedFill: "#807b5537"
             reduceMotion: studio.reducedMotion
             onClicked: {if(overlay.editingButtons)overlay.editingButtons=false;else overlay.menuOpen=!overlay.menuOpen;}
         }
-        Text { anchors.horizontalCenter: parent.horizontalCenter;y: 47;text: overlay.editingButtons?"Edit":overlay.menuOpen?"Back":"Menu";color: overlay.settingsInk;font.pixelSize: 11;font.weight: Font.Medium }
+        HoverHandler { id: centerHover; cursorShape: centerDrag.active ? Qt.ClosedHandCursor : Qt.OpenHandCursor }
+        HoverTip { objectName: "centerHoverTip"; anchorItem: hub; avoidMargin: 63; text: centerButton.hint; requested: centerHover.hovered && !centerTap.pressed && !centerDrag.active }
+        TapHandler {
+            id: centerTap
+            acceptedButtons: Qt.LeftButton
+            gesturePolicy: TapHandler.ReleaseWithinBounds
+            onTapped: centerButton.clicked()
+        }
+        DragHandler {
+                id: centerDrag
+                objectName: "radialCenterDrag"
+                target: null
+                dragThreshold: 7
+                acceptedButtons: Qt.LeftButton
+                minimumPointCount: 1; maximumPointCount: 1
+                cursorShape: Qt.ClosedHandCursor
+                property point origin: Qt.point(0,0)
+                function moveCenter() {
+                    if(active)studio.runtime.moveRadialCenter(origin.x+centroid.scenePosition.x-centroid.scenePressPosition.x,
+                                                             origin.y+centroid.scenePosition.y-centroid.scenePressPosition.y)
+                }
+                onActiveChanged: if(active){origin=studio.runtime.radialCenter;studio.runtime.releaseModifiers();moveCenter();}
+                onTranslationChanged: moveCenter()
+        }
     }
     BloomLayer {
         id: railBloom
         objectName: "railSettingsBloom"
         x: railHousing.x; y: railHousing.y
         width: 44; height: 347
-        visible: railHousing.visible && overlay.menuOpen
+        visible: railHousing.visible && overlay.settingsVisible
         progress: overlay.bloomProgress
         docked: true
         Rectangle {
-            anchors.fill: parent;radius: 14
+            anchors.fill: parent;anchors.margins: 1;radius: 13
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0; color: overlay.settingsReady ? "#f06b4b35" : "#6b4b35" }
@@ -274,7 +316,7 @@ Window {
     HubButton {
         objectName: "railSettingsButton"
         x: railHousing.x; y: railHousing.y
-        width: 44; height: 44; railStyle: true
+        width: 44; height: 44; railStyle: true; railCap: true
         glyph: overlay.menuOpen || overlay.editingButtons ? "back" : "more"
         hint: overlay.menuOpen ? "Back to drawing tools" : "Radial menu settings"
         iconColor: overlay.menuOpen ? overlay.settingsInk : "#e0edfa"
@@ -287,7 +329,7 @@ Window {
     Rectangle {
         id: result
         objectName: "overlayResult"
-        visible: (overlay.resultMessage.length>0 || overlay.editingButtons) && !overlay.menuOpen && !overlay.childrenVisible && !overlay.morphing
+        visible: (overlay.resultMessage.length>0 || overlay.editingButtons) && overlay.toolsReady && !overlay.childrenVisible && !overlay.morphing
         width: Math.min(320,overlay.width-24); height: message.implicitHeight+20; radius: 12
         x: studio.runtime.docked ? 12 : Math.max(8,Math.min(overlay.width-width-8,studio.runtime.radialCenter.x-width/2))
         y: Math.min(overlay.height-height-8,studio.runtime.docked ? overlay.height/2+164 : studio.runtime.radialCenter.y+116)

@@ -2,6 +2,8 @@
 [CmdletBinding()]
 param(
     [string]$NotesFile,
+    [ValidateSet('Justice','Bassem')][string]$ApprovedBy,
+    [string]$ApprovedNotesSha256,
     [string]$Repository = 'justicefrangipane/Tablet-Pro-Radial',
     [string]$Gh = 'gh',
     [switch]$Publish
@@ -22,6 +24,12 @@ if (-not $NotesFile) {
     New-Item -ItemType Directory -Path $notesDirectory -Force | Out-Null
     $NotesFile = Join-Path $notesDirectory "$version.md"
     & (Join-Path $PSScriptRoot 'update-history.ps1') -Version $version -OutputFile $NotesFile
+}
+if (-not $ApprovedBy -or $ApprovedNotesSha256 -notmatch '^[a-fA-F0-9]{64}$') {
+    throw 'Share these exact notes with Justice and obtain Justice or Bassem approval before any upload. Record ApprovedBy and ApprovedNotesSha256 only after that approval.'
+}
+if ((Get-FileHash -LiteralPath $NotesFile -Algorithm SHA256).Hash -ine $ApprovedNotesSha256) {
+    throw 'Release notes changed after approval. Share the updated notes and obtain approval again.'
 }
 $setup = Join-Path $root "dist\Tablet-Pro-Radial-$version-Windows-x64-Setup.exe"
 $checksums = Join-Path $root "dist\Tablet-Pro-Radial-$version-SHA256SUMS.txt"

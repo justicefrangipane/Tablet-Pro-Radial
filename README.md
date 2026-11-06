@@ -8,7 +8,7 @@ A native Windows radial menu and editor with pen-button invocation, a docked rai
 
 Open the latest release and download the file ending in **Windows-x64-Setup.exe**. Run it on each computer. Setup installs for your Windows account and includes the Qt runtime; administrator access and a separate Qt installation are not required. The installer is currently unsigned.
 
-The current application version is **0.3.10**. This is the version used by the installer and updater.
+The current candidate is **0.3.13**. Publication is held until Justice or Bassem approves its exact update notes.
 
 ## Get updates
 
@@ -24,17 +24,20 @@ For the older 0.3.3 build, enter `justicefrangipane/Tablet-Pro-Radial` in its Up
 
 ## Start using Radial
 
-Use **Ctrl+Alt+Space** or your configured pen button to show or hide the menu. Tap the center **ellipsis / Menu** to open **Dock, Edit, Sound, Glass, Hide, and Quit**. **Gentle bloom** spreads bronze from the center, revealing ivory settings in the existing outer ring over 760 ms. Tap **Back** to return to tools, including during the fill. The settings stay within the original wheel footprint. Closing the editor leaves Radial in the tray; **Quit** exits the app. Use only one Radial or Tablet Pro Studio instance at a time to avoid overlapping pen shortcuts.
+Use **Ctrl+Alt+Space** or your configured pen button to show or hide the menu. Tap the centered **ellipsis** to open **Dock, Edit, Sound, Glass, Hide, and Quit**. **Gentle bloom** spreads bronze from the center, revealing ivory settings in the existing outer ring over 760 ms. **Back** reverses that bloom into the ellipsis; toggling midway continues from the current frame. Drawing tools enable once the closing animation finishes. The settings stay within the original wheel footprint. Closing the editor leaves Radial in the tray; **Quit** exits the app. Use only one Radial or Tablet Pro Studio instance at a time to avoid overlapping pen shortcuts.
 
 Save your custom menu with **Save test radial…**, and use **Apply draft** to activate editor changes. See [Windows quick start](docs/RUN-WINDOWS.md) and [tray and updates](docs/TRAY-AND-UPDATES.md).
 
 The main default menu contains **Brush, Eraser, Alt, Ctrl, Shift, and Tools**. The Tools group retains selection, color, text, and editing shortcuts.
 
-- **Hold** a modifier button to keep the key down.
-- **Drag out** to lock it for the current contact; lifting the stylus releases it.
-- **Double-tap** to keep it on after lifting; tap it again to release. A small lock marks this state.
+- **Floating radial:** tap a modifier to hold it for the next pen stroke. A circled **1** marks the armed state. The selection tap does not consume it; lifting the next stroke releases it. Tap again to cancel. Multiple modifiers can share the next stroke.
+- **Docked rail:** hold for a momentary modifier, drag out to lock it until lifting, or double-tap to keep it on until tapped again. A small lock marks the persistent state.
 
-Held keys release when the menu is hidden, the editor opens, the target app changes, or Radial exits. They are not saved across restarts. Existing customized menus are preserved; **Use new default menu** loads the new layout as an undoable draft. Unchanged old defaults upgrade automatically.
+Held keys release when the menu is hidden, its pen button or shortcut is pressed, the editor opens, the target app changes, or Radial exits. They are not saved across restarts. Existing customized menus are preserved; **Use new default menu** loads the new layout as an undoable draft. Unchanged old defaults upgrade automatically.
+
+Drag inside the center circle to move the radial. Tap its centered ellipsis for settings. The center has no rectangular hover highlight; tooltips use their own topmost, input-transparent window and stay inside the screen edges.
+
+Glass fades outward by one quarter of the menu body's width (11 logical pixels for the dock, 50.5 for the radial), without enlarging its input area. Display layout, DPI and compositor changes trigger a coalesced graphics/mask/Glass rebuild. Physical Crystal reconnects and pen hardware still require device acceptance.
 
 For quick edits, choose **Menu → Edit**, then tap the button to open its inspector. Select **Modifier key** as its behavior to assign Alt, Ctrl, or Shift, then **Apply draft**.
 

@@ -287,6 +287,9 @@ void paintModifier(QPainter& p,const Button& b,QPointF center){
     p.save();p.translate(center+QPointF(0,b.caption.isEmpty()?14:-21));p.setPen(QPen(QColor("#ffe5bd"),1));p.setBrush(QColor("#ffe5bd"));
     if(b.modifierState=="latched"){
         p.setBrush(Qt::NoBrush);p.drawRoundedRect(QRectF(-3,-2,6,5),1,1);p.drawArc(QRectF(-2,-6,4,6),0,180*16);
+    }else if(b.modifierState=="armed"){
+        p.setBrush(Qt::NoBrush);p.drawEllipse(QPointF(0,0),4,4);
+        p.setFont(QFont("Segoe UI",5,QFont::Bold));p.drawText(QRectF(-4,-4,8,8),Qt::AlignCenter,"1");
     }else if(b.modifierState=="dragged"){p.drawRoundedRect(QRectF(-5,-1,10,2),1,1);}
     else p.drawEllipse(QPointF(0,0),1.8,1.8);
     p.restore();

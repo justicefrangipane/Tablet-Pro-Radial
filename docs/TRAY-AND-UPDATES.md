@@ -1,4 +1,4 @@
-# Tablet Pro Radial 0.3.10
+# Tablet Pro Radial 0.3.13 candidate
 
 The bronze-and-ivory fan icon beside the Windows clock stays available while the editor
 and overlay are hidden. Windows may initially place it under the hidden-icons
@@ -31,10 +31,12 @@ the drawing tools retain their cool blue-gray appearance. Sound and Glass show
 an illuminated indicator when enabled. The back arrow restores the tools.
 
 The animation stays inside the existing outline. Drawing actions disable when
-the fill begins; settings become interactive when it finishes. Back or hide
-cancels the fill. Reduced motion and software rendering switch immediately.
+the fill begins; settings become interactive when it finishes. Back reverses the
+bloom from its current frame. Drawing tools enable after it has fully receded.
+Reopening during a close reverses direction smoothly. Hide cancels the animation;
+Reduced motion and software rendering switch immediately in both directions.
 
-Both states have the same width, including the Windows input and glass boundary.
+Both states have the same body and input width. Glass diffuses 11 logical pixels beyond the dock with a gradual fade; this extra decoration is input-transparent. The floating wheel uses a 50.5 pixel fade.
 Settings use 44 px targets and do not leave hidden drawing actions underneath.
 The floating radial keeps its centered controls; its settings panel shares the
 new warm palette. Saved profiles, button assignments, and preferences are retained.

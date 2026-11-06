@@ -49,6 +49,14 @@ QImage capture(HWND ownedBackground){
 double difference(QColor a,QColor b){return std::abs(a.red()-b.red())+std::abs(a.green()-b.green())+std::abs(a.blue()-b.blue());}
 QColor mean(const QImage& image,QRect rect){double r=0,g=0,b=0,n=0;for(int y=rect.top();y<=rect.bottom();++y)for(int x=rect.left();x<=rect.right();++x){auto c=image.pixelColor(x,y);r+=c.red();g+=c.green();b+=c.blue();++n;}return QColor(int(r/n),int(g/n),int(b/n));}
 double detail(const QImage& image,QRect rect){double sum=0,n=0;for(int y=rect.top();y<rect.bottom();++y)for(int x=rect.left();x<rect.right();++x){sum+=difference(image.pixelColor(x,y),image.pixelColor(x+1,y));sum+=difference(image.pixelColor(x,y),image.pixelColor(x,y+1));n+=2;}return sum/n;}
+double change(const QImage& a,const QImage& b,QRect rect){double sum=0;for(int y=rect.top();y<=rect.bottom();++y)for(int x=rect.left();x<=rect.right();++x)sum+=difference(a.pixelColor(x,y),b.pixelColor(x,y));return sum/(rect.width()*rect.height());}
+bool preservesExternalFocus(HWND original){
+    const HWND current=GetForegroundWindow();if(current==original)return true;
+    DWORD pid=0;GetWindowThreadProcessId(current,&pid);
+    // The user may switch between their own apps during a long pixel check.
+    // No test-owned window, including the Glass helper, may take that focus.
+    return current&&pid&&pid!=GetCurrentProcessId();
+}
 }
 int main(int argc,char** argv){
     QGuiApplication app(argc,argv);HWND background=nullptr;
@@ -74,7 +82,7 @@ int main(int argc,char** argv){
         check(difference(mean(blurred,top),mean(changed,top))>80,"glass must update from the live background");
         glass.setEnabled(false);settle();const auto disabled=capture(background);
         check(detail(disabled,top)>15,"Glass off must restore sharp background");
-        check(GetForegroundWindow()==foreground,"visual glass test must preserve focus");
+        check(preservesExternalFocus(foreground),"visual glass test must preserve external focus");
 
         tabletpro::MenuSession session(true,nullptr);session.setProfile(radial::defaultProfile());session.setViewport(640,480);session.setRadialCenter(320,240);
         RadialSurface surface;surface.setSize({640,480});surface.setButtons(session.buttons());
@@ -94,12 +102,34 @@ int main(int argc,char** argv){
         }
         window.setMask(menuShape);surface.setParentItem(window.contentItem());surface.setGlassEnabled(false);
         SetWindowLongPtrW(background,GWLP_USERDATA,0);InvalidateRect(background,nullptr,FALSE);settle();const auto menuOff=capture(background);
-        surface.setGlassEnabled(true);glass.setEnabled(true);settle(700);const auto menuOn=capture(background);
+        QElapsedTimer glassWork;glassWork.start();glass.setDiffusion(50.5);
+        surface.setGlassEnabled(true);glass.setEnabled(true);
+        const auto buildMs=glassWork.elapsed();std::cout<<"full radial Glass rebuild "<<buildMs<<" ms\n";
+        check(buildMs<1000,"wide Glass on the real six-wedge mask must not stall the UI");
+        settle(700);const auto menuOn=capture(background);
         SetWindowLongPtrW(background,GWLP_USERDATA,1);InvalidateRect(background,nullptr,FALSE);settle(600);const auto menuChanged=capture(background);
         check(difference(menuOn.pixelColor(point(335,155)),menuChanged.pixelColor(point(335,155)))>30,"rendered Qt menu fill must reveal live glass colors");
-        check(GetForegroundWindow()==foreground,"rendered menu must not take focus");
+        check(preservesExternalFocus(foreground),"rendered menu must not take focus");
+        surface.setVisible(false);glass.setEnabled(false);
+        QImage dockDiffusion,radialDiffusion;
+        for(bool docked:{true,false}){
+            const QRegion body=docked?QRegion(QRect(300,140,44,200)):QRegion(QRect(219,139,202,202),QRegion::Ellipse);
+            window.setMask(body);glass.setEnabled(false);settle();const auto sharp=capture(background);
+            glass.setDiffusion(docked?11:50.5);glass.setEnabled(true);settle(800);const auto soft=capture(background);
+            check(glass.requestAccepted()&&window.mask()==body,"diffusion leaves exact clickable body unchanged");
+            const int edge=docked?344:421;
+            const auto closeChange=change(sharp,soft,rect(edge+2,220,2,40));
+            const auto middle=change(sharp,soft,rect(edge+(docked?5:24),220,2,40));
+            const auto edgeChange=change(sharp,soft,rect(edge+(docked?9:45),220,2,40));
+            const auto outside=change(sharp,soft,rect(edge+(docked?14:55),220,2,40));
+            std::cout<<(docked?"dock":"radial")<<" diffusion change "<<closeChange<<", "<<middle<<", "<<edgeChange<<", "<<outside<<'\n';
+            check(closeChange>middle&&middle>edgeChange&&edgeChange>0.1,"Glass fades progressively across one quarter of the body width");
+            check(outside<3,"background beyond diffusion remains sharp and unchanged");
+            if(docked)dockDiffusion=soft;else radialDiffusion=soft;
+        }
         const int output=app.arguments().indexOf("--output");if(output>=0&&output+1<app.arguments().size()){
             const QString path=app.arguments()[output+1];QDir().mkpath(path);plain.save(path+"/pattern.png");blurred.save(path+"/glass.png");changed.save(path+"/glass-live-change.png");menuOff.save(path+"/menu-off.png");menuOn.save(path+"/menu-on.png");
+            dockDiffusion.save(path+"/dock-diffusion.png");radialDiffusion.save(path+"/radial-diffusion.png");
         }
         glass.setEnabled(false);window.hide();DestroyWindow(background);background=nullptr;
         std::cout<<checks<<" rendered-glass checks passed; pattern detail "<<before<<" -> "<<after<<"\n";return 0;

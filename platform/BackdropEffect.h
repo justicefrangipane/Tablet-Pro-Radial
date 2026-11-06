@@ -8,8 +8,8 @@
 
 namespace tabletpro {
 
-// Glass is a host-backdrop visual with a CompositionGeometricClip in a separate
-// native window behind Qt. The HWND region only limits native hit testing.
+// Glass is a host-backdrop visual with a fading opacity mask in a separate
+// input-transparent native window behind Qt. Qt keeps the body-only hit region.
 // A system backdrop must never be attached to the monitor-sized Qt window:
 // DWMSBT_TRANSIENTWINDOW paints its entire bounds, including transparent pixels.
 // Unsupported systems retain the surface's translucent painted fill.
@@ -22,6 +22,8 @@ public:
     // Disable before expanding the overlay mask for a docking transition.
     // Restore the small mask before enabling again. Repeated calls refresh.
     void setEnabled(bool enabled);
+    // Logical pixels outside the body; this never enlarges the input mask.
+    void setDiffusion(qreal distance);
     bool enabled() const { return m_enabled; }
 
     // DWM accepted the request; this is not proof of the displayed appearance.
@@ -42,6 +44,8 @@ private:
     void* m_composition = nullptr;
     QRegion m_nativeRegion;
     QRect m_nativeGeometry;
+    qreal m_diffusion = 0;
+    qreal m_nativeDiffusion = -1;
     bool m_refreshing = false;
     bool m_enabled = true;
     bool m_requestAccepted = false;

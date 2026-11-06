@@ -42,6 +42,7 @@ public:
     void setDurationMs(int value);
     Q_INVOKABLE void setViewport(qreal width, qreal height);
     Q_INVOKABLE void setRadialCenter(qreal x, qreal y);
+    Q_INVOKABLE void moveRadialCenter(qreal x, qreal y);
     Q_INVOKABLE void toggleDock();
     Q_INVOKABLE void replayDock();
     Q_INVOKABLE void pointerPressed(int pointerId, qreal x, qreal y);
@@ -49,6 +50,7 @@ public:
     Q_INVOKABLE void pointerReleased(int pointerId, qreal x, qreal y);
     Q_INVOKABLE void cancel();
     Q_INVOKABLE void releaseModifiers();
+    void finishNextStroke();
 signals:
     void geometryChanged();
     void stateChanged();
@@ -65,13 +67,14 @@ private:
     int durationMs_ = 1640;
     qreal width_ = 680, height_ = 540, progress_ = 0;
     std::optional<QPointF> radialAnchor_;
+    bool draggedAnchor_ = false;
     QString status_ = "Press a tool. Pull a group outward, steer, then release.";
     quintptr invocationTarget_ = 0, gestureTarget_ = 0;
     QString previousSelection_;
     bool pendingDispatch_ = false;
     std::optional<int> modifierPointer_;
     QString modifierKey_, modifierNode_, lastTapKey_;
-    QStringList heldModifiers_, latchedModifiers_;
+    QStringList heldModifiers_, latchedModifiers_, armedModifiers_;
     QPointF modifierStart_;
     QElapsedTimer modifierClock_;
     qint64 pressedAt_ = 0, lastTapAt_ = -1000;
@@ -84,6 +87,6 @@ private:
     void updateView();
     void finish();
     bool viewFits() const;
-    QPointF boundedRadialCenter(QPointF center) const;
+    QPointF boundedRadialCenter(QPointF center, bool leaveFanRoom = true) const;
 };
 }

@@ -26,14 +26,14 @@ StudioController::StudioController(QObject* parent,const QString& configDirector
     const int duration=settings.value("durationMs",1640).toInt();preview_.setDurationMs(duration);runtime_.setDurationMs(duration);
     connect(&preview_,&MenuSession::preferencesChanged,this,[this]{runtime_.setDurationMs(preview_.durationMs());QSettings().setValue("durationMs",preview_.durationMs());});
     for(auto* session:{&preview_,&runtime_}) { connect(session,&MenuSession::cue,&audio_,&AudioFeedback::play);connect(session,&MenuSession::actionReported,this,[this](const QString& result){status_=result;emit changed();}); }
-    connect(&platform_,&WindowPlatform::toggleRequested,this,[this](quintptr target){emit showRuntimeRequested(target,true);});
+    connect(&platform_,&WindowPlatform::toggleRequested,this,[this](quintptr target){runtime_.releaseModifiers();emit showRuntimeRequested(target,true);});
     connect(&platform_,&WindowPlatform::lastErrorChanged,this,&StudioController::changed);
     stylus_.setSelectedSideButton(settings.value("penSideButton",1).toInt());
     stylus_.setEnabled(settings.value("penInputEnabled",true).toBool());
     connect(&stylus_,&StylusInput::settingsChanged,this,[this]{
         QSettings prefs;prefs.setValue("penInputEnabled",stylus_.enabled());prefs.setValue("penSideButton",stylus_.selectedSideButton());
     });
-    connect(&stylus_,&StylusInput::sideButtonPressed,this,[this]{emit showRuntimeRequested(platform_.captureForegroundTarget(),true);});
+    connect(&stylus_,&StylusInput::sideButtonPressed,this,[this]{runtime_.releaseModifiers();emit showRuntimeRequested(platform_.captureForegroundTarget(),true);});
 }
 const radial::Node* StudioController::selectedNode() const {const auto i=draft_.nodes.find(selected_.toStdString());return i==draft_.nodes.end()?nullptr:&i->second;}
 radial::Node* StudioController::selectedNode() {const auto i=draft_.nodes.find(selected_.toStdString());return i==draft_.nodes.end()?nullptr:&i->second;}

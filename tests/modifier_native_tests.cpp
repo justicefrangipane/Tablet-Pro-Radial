@@ -44,6 +44,7 @@ int main(int argc,char** argv){
     if(argc>1&&std::string(argv[1])=="--input-target")return target();
     QGuiApplication app(argc,argv);
     HWND original=GetForegroundWindow();
+    POINT originalCursor{};GetCursorPos(&originalCursor);
     QProcess child;HWND window=nullptr;
     int result=0;
     try {
@@ -81,6 +82,42 @@ int main(int argc,char** argv){
         }
         platform.releaseModifiers();settle();
         check(platform.heldModifiers().isEmpty()&&!(GetAsyncKeyState(VK_MENU)&0x8000)&&!(GetAsyncKeyState(VK_CONTROL)&0x8000)&&!(GetAsyncKeyState(VK_SHIFT)&0x8000),"cleanup releases all owned modifiers");
+        {
+            tabletpro::PenStrokeMonitor monitor;int strokes=0;
+            QObject::connect(&monitor,&tabletpro::PenStrokeMonitor::strokeFinished,[&]{++strokes;});
+            check(monitor.start(),"pen observer starts");
+            monitor.contact(1,false,false);monitor.contact(1,true,true);monitor.contact(1,false,true);
+            check(strokes==0,"selection lift and own app contacts cannot consume next stroke");
+            monitor.contact(7,true,false);monitor.contact(9,false,false);
+            check(strokes==0,"other device or promoted channel cannot end a stroke");
+            monitor.contact(7,false,true);monitor.contact(7,false,false);
+            check(strokes==1,"first external stroke ends once even if its release is over the menu");
+            monitor.stop();check(monitor.start(),"observer restarts after cleanup");
+            monitor.contact(1,true,false);monitor.stop();monitor.contact(1,false,false);
+            check(strokes==1,"canceled observer cannot emit a stale stroke completion");
+        }
+        captured=platform.captureForegroundTarget();
+        check(platform.setModifierHeld("Ctrl",true,captured)&&platform.armNextStroke("Ctrl"),"Ctrl arms native next stroke observer");
+        check(platform.setModifierHeld("Shift",true,captured)&&platform.armNextStroke("Shift"),"Shift joins same next stroke");
+        SetWindowPos(window,HWND_TOPMOST,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
+        SetForegroundWindow(window);settle();
+        RECT client{};GetClientRect(window,&client);
+        POINT point{(client.right-client.left)/2,(client.bottom-client.top)/2};ClientToScreen(window,&point);
+        check(SetCursorPos(point.x,point.y),"move pointer inside owned receiver");settle();
+        const auto pen=[&](bool down,ULONG_PTR signature){
+            if(GetForegroundWindow()!=window||WindowFromPoint(point)!=window)std::cerr<<"receiver="<<window<<" foreground="<<GetForegroundWindow()<<" hit="<<WindowFromPoint(point)<<" at "<<point.x<<","<<point.y<<'\n';
+            check(GetForegroundWindow()==window&&WindowFromPoint(point)==window,"pen test stays inside owned receiver");
+            INPUT input{};input.type=INPUT_MOUSE;input.mi.dwFlags=down?MOUSEEVENTF_LEFTDOWN:MOUSEEVENTF_LEFTUP;input.mi.dwExtraInfo=signature;
+            check(SendInput(1,&input,sizeof(input))==1,"send tagged pointer to owned receiver");settle();
+        };
+        pen(false,0xff515701);
+        check(platform.heldModifiers().size()==2,"initial selection pen up does not release armed modifiers");
+        pen(true,0);pen(false,0);pen(true,0xff515781);pen(false,0xff515781);
+        check(platform.heldModifiers().size()==2,"ordinary mouse and touch promotion do not consume pen stroke");
+        pen(true,0xff515701);
+        check((GetAsyncKeyState(VK_CONTROL)&0x8000)&&(GetAsyncKeyState(VK_SHIFT)&0x8000),"native modifiers remain held throughout pen contact");
+        pen(false,0xff515701);
+        check(platform.heldModifiers().isEmpty()&&!(GetAsyncKeyState(VK_CONTROL)&0x8000)&&!(GetAsyncKeyState(VK_SHIFT)&0x8000),"native pen up releases every armed modifier");
         captured=platform.captureForegroundTarget();check(platform.setModifierHeld("Alt",true,captured),"hold before target exits");
         PostMessageW(window,WM_CLOSE,0,0);child.waitForFinished(3000);settle(100);
         check(platform.heldModifiers().isEmpty()&&!(GetAsyncKeyState(VK_MENU)&0x8000),"target loss releases held key");
@@ -89,5 +126,6 @@ int main(int argc,char** argv){
     if(window&&IsWindow(window))PostMessageW(window,WM_CLOSE,0,0);
     if(child.state()!=QProcess::NotRunning&&!child.waitForFinished(3000)){child.kill();child.waitForFinished();}
     if(original&&IsWindow(original))SetForegroundWindow(original);
+    SetCursorPos(originalCursor.x,originalCursor.y);
     return result;
 }

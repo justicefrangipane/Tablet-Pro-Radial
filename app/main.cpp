@@ -1,6 +1,7 @@
 #include "StudioController.h"
 #include "ProfileCodec.h"
 #include "DesktopShell.h"
+#include "DisplayRecovery.h"
 #include "ui/RadialSurface.h"
 #include "platform/StylusInput.h"
 #include "platform/BackdropEffect.h"
@@ -72,6 +73,7 @@ int main(int argc,char**argv) {
     studio.platform()->configureOverlay(overlay);
     BackdropEffect backdrop;
     backdrop.configure(overlay);
+    DisplayRecovery recovery(overlay,studio.runtime(),&backdrop);
     if(!smoke){studio.platform()->registerToggleHotkey();studio.stylus()->start();}
     auto* surface=overlay->findChild<RadialSurface*>("runtimeSurface");
     auto* settingsSurface=overlay->findChild<RadialSurface*>("settingsSurface");
@@ -82,7 +84,6 @@ int main(int argc,char**argv) {
         return QRegion(points.toPolygon(),Qt::WindingFill);
     };
     auto updateMask=[&] {
-        if(!overlay->isVisible())return;
         QRegion region;
         for(const auto* name:{"overlayRail","overlayToolbar","overlayMorePanel","overlayResult"}) {
             const auto* item=overlay->findChild<QQuickItem*>(name);
@@ -115,8 +116,10 @@ int main(int argc,char**argv) {
             region+=sector({b["fromX"].toDouble(),b["fromY"].toDouble()},b["axis"].toDouble(),radial::GestureEngine::ChildInnerRadius-3,radial::GestureEngine::ChildOuterRadius+3,(radial::GestureEngine::ChildHalfAngleDegrees+1)*3.141592653589793/180);
         }
         if(region!=overlay->mask())overlay->setMask(region);
-        if(!moving)backdrop.setEnabled(studio.backdropEnabled());
+        backdrop.setDiffusion(session->docked()?44.0/4:202.0/4);
+        if(!moving&&!recovery.pending())backdrop.setEnabled(studio.backdropEnabled());
     };
+    QObject::connect(&recovery,&DisplayRecovery::refreshMask,&app,updateMask);
     QObject::connect(studio.runtime(),&MenuSession::geometryChanged,&app,updateMask);
     QObject::connect(studio.runtime(),&MenuSession::stateChanged,&app,updateMask);
     QObject::connect(&studio,&StudioController::changed,&app,updateMask);
@@ -135,6 +138,7 @@ int main(int argc,char**argv) {
         if(!screen)screen=QGuiApplication::primaryScreen();
         if(!screen)return;
         const auto available=screen->availableGeometry();
+        overlay->setScreen(screen);
         overlay->setGeometry(available);
         studio.runtime()->setViewport(available.width(),available.height());
         const auto cursor=QCursor::pos()-available.topLeft();
@@ -230,6 +234,7 @@ int main(int argc,char**argv) {
                             const auto* railPanel=overlay->findChild<QQuickItem*>("railSettingsPanel");
                             const bool narrowOpen=railPanel&&railPanel->isVisible()&&!surface->isVisible()&&overlay->mask().boundingRect().width()==44&&saveRail("runtime-rail-settings.png");
                             if(railToggle)QMetaObject::invokeMethod(railToggle,"clicked",Qt::DirectConnection);
+                            QEventLoop closeWait;QTimer::singleShot(1000,&closeWait,&QEventLoop::quit);closeWait.exec();
                             const bool flips=narrowClosed&&narrowOpen&&surface->isVisible();
                             studio.runtime()->setReducedMotion(false);
                             studio.runtime()->setProfile(radial::legacyDefaultProfile());

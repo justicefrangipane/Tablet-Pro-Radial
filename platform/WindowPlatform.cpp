@@ -185,6 +185,16 @@ bool invocationInputDown(quint16 mainKey, const QStringList& owned)
 
 WindowPlatform::WindowPlatform(QObject* parent) : QObject(parent)
 {
+    connect(&m_penStroke,&PenStrokeMonitor::strokeFinished,this,[this]{
+        const auto generation=m_strokeGeneration;
+        // Let the pen-up enter the drawing app's input queue before our key-ups.
+        QTimer::singleShot(0,this,[this,generation]{
+            if(generation!=m_strokeGeneration)return;
+            const auto keys=m_strokeModifiers;
+            for(const auto& key:keys)setModifierHeld(key,false);
+            emit strokeModifiersReleased();
+        });
+    });
     m_releaseGate.setInterval(8);
     m_releaseGate.setTimerType(Qt::PreciseTimer);
     connect(&m_releaseGate, &QTimer::timeout, this, &WindowPlatform::pollQueuedAction);
@@ -373,6 +383,8 @@ bool WindowPlatform::setModifierHeld(const QString& key, bool held, quintptr tar
         m_modifierProcess=m_targetProcess;m_modifierThread=m_targetThread;m_targetWatch.start();
     } else {
         m_heldModifiers.removeAll(key);
+        m_strokeModifiers.removeAll(key);
+        if(m_strokeModifiers.isEmpty()){m_penStroke.stop();++m_strokeGeneration;}
         if(m_heldModifiers.isEmpty()){m_modifierTarget=0;m_modifierProcess=m_modifierThread=0;if(!m_capturedTarget)m_targetWatch.stop();}
     }
     clearError();return true;
@@ -380,9 +392,16 @@ bool WindowPlatform::setModifierHeld(const QString& key, bool held, quintptr tar
 
 void WindowPlatform::releaseModifiers()
 {
+    m_penStroke.stop();++m_strokeGeneration;
     const auto held=m_heldModifiers;
     for(const auto& key:held)setModifierHeld(key,false);
     if(m_heldModifiers.isEmpty() && !held.isEmpty())emit modifiersReleased();
+}
+bool WindowPlatform::armNextStroke(const QString& key) {
+    if(!m_heldModifiers.contains(key))return false;
+    if(!m_penStroke.start())return fail("Pen contact monitoring could not start. The modifier was released; tap again to retry.");
+    if(!m_strokeModifiers.contains(key))m_strokeModifiers.append(key);
+    return true;
 }
 
 bool WindowPlatform::shortcutSupported(const QString& key, const QStringList& modifiers) const

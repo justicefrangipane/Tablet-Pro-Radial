@@ -1,4 +1,18 @@
-# Current release: 0.3.10
+# Current candidate: 0.3.13 (publication held)
+
+Docked settings highlights use the control's background insets: 3 logical pixels on either side and 2 above/below each action. This keeps active, hover and pressed fills inside the continuous rail border while preserving the 44-by-44 pointer targets and active-state dots.
+
+The center circle is a circular mouse/touch/pen drag target with a centered ellipsis and no rectangular hover background. Tap opens settings; a drag does not. Tooltips are separate topmost, input-transparent windows with screen bounds and position updates. Dock artwork is inset inside the rounded native mask.
+
+Floating modifiers arm the next external pen stroke, ignore the selection lift, and release on its pen-up. A second tap cancels. Docked hold/contact-lock/double-tap latch remains. Hide, trigger, target loss, mode changes, recovery and exit release owned keys. The observer uses raw pen Tip Switch reports with a pen-promoted mouse fallback; it does not redirect input or install a keyboard hook.
+
+Glass diffuses smoothly beyond the body by 25% of its width (11 dock / 50.5 radial logical pixels). A cached opacity texture uses a linear-time Euclidean distance transform and a Composition SOURCE_IN effect to fade the live backdrop, without enlarging the Qt hit region. Screen layout, scaling and compositor events coalesce into a non-activating graphics/resource/mask/Glass rebuild. Pending recovery never reopens a dismissed overlay.
+
+Closing settings reverses Gentle bloom from its current progress, in both layouts. Toggling during either direction continues from that frame with proportional duration. Tool and setting input stays blocked during the transition. Hide and docking changes clear animation state; Reduced motion and software rendering switch instantly.
+
+The candidate must pass the eight Windows suites, larger-scale rendering checks and packaged smoke/installer validation. Physical pen hardware and actual Crystal connect/disconnect remain acceptance checks. Exact candidate notes require Justice or Bassem approval before any posting or upload. The publisher checks the recorded approver and exact notes hash; no approval has been supplied for 0.3.13.
+
+# Previous release: 0.3.10
 
 What's new opens automatically on the first normal launch of each version, after radial/docked/editor startup. It shows the running version's bundled notes and offers Let's go or View update log. A persisted per-version marker prevents repeats on restart or reinstall; opening an older build does not reset a newer build's marker. Smoke runs and the pen helper do not show or mark the welcome. Missing notes do not display another version's content or consume its marker.
 

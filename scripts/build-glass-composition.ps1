@@ -15,6 +15,6 @@ try {
     $env:INCLUDE=(Join-Path $toolRoot 'include')+';'+((@('ucrt','um','shared','winrt','cppwinrt') | ForEach-Object {Join-Path $sdk.FullName $_}) -join ';')
     $env:LIB=(Join-Path $toolRoot 'lib\x64')+';'+(Join-Path $kitRoot ('Lib\'+$sdk.Name+'\ucrt\x64'))+';'+(Join-Path $kitRoot ('Lib\'+$sdk.Name+'\um\x64'))
     New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
-    & $compiler /nologo /std:c++20 /EHsc /MT /O2 /LD /utf-8 (Join-Path $projectRoot 'platform\GlassComposition.cpp') ('/Fo'+(Join-Path $outputPath 'GlassComposition.obj')) ('/Fe'+(Join-Path $outputPath 'TabletProGlass.dll')) /link windowsapp.lib d2d1.lib dwmapi.lib coremessaging.lib ole32.lib ('/IMPLIB:'+(Join-Path $outputPath 'TabletProGlass.lib'))
+    & $compiler /nologo /std:c++20 /EHsc /MT /O2 /LD /utf-8 (Join-Path $projectRoot 'platform\GlassComposition.cpp') ('/Fo'+(Join-Path $outputPath 'GlassComposition.obj')) ('/Fe'+(Join-Path $outputPath 'TabletProGlass.dll')) /link windowsapp.lib d2d1.lib d3d11.lib dxguid.lib dwmapi.lib coremessaging.lib ole32.lib ('/IMPLIB:'+(Join-Path $outputPath 'TabletProGlass.lib'))
     if($LASTEXITCODE -ne 0){throw "Composition bridge build failed ($LASTEXITCODE)."}
 } finally {$env:INCLUDE=$oldInclude;$env:LIB=$oldLib}
