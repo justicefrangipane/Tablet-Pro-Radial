@@ -152,6 +152,7 @@ int main(int argc,char**argv) {
         studio.runtime()->setReducedMotion(studio.reducedMotion());
     }
     if(!startInEditor)QTimer::singleShot(0,&studio,&StudioController::showOverlay);
+    if(!smoke)QTimer::singleShot(0,&desktop,&DesktopShell::showWhatsNewIfNeeded);
     if(smoke) {
         int index=args.indexOf("--output");const QString output=index>=0&&index+1<args.size()?args[index+1]:QDir::currentPath();QDir().mkpath(output);
         index=args.indexOf("--size");if(index>=0&&index+1<args.size()){const auto parts=args[index+1].split('x');if(parts.size()==2)editor->resize(parts[0].toInt(),parts[1].toInt());}

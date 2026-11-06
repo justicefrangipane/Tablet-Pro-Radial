@@ -1,6 +1,8 @@
-# Current release: 0.3.9
+# Current release: 0.3.10
 
-The offline Update log is available from the system tray, editor footer, and Updates window. A version picker marks the installed release and shows New, Improved, and Fixed changes for the selected version. The bundled history starts at 0.3.4. The release build requires a matching history entry, and the publisher generates GitHub notes from that entry by default. Native Windows rendering and 144 tray/update checks cover the history, selection, installed marker, narrow layout, and reopening behavior.
+What's new opens automatically on the first normal launch of each version, after radial/docked/editor startup. It shows the running version's bundled notes and offers Let's go or View update log. A persisted per-version marker prevents repeats on restart or reinstall; opening an older build does not reset a newer build's marker. Smoke runs and the pen helper do not show or mark the welcome. Missing notes do not display another version's content or consume its marker.
+
+The offline Update log is available from the system tray, editor footer, and Updates window. A version picker marks the installed release and shows New, Improved, and Fixed changes for the selected version. The bundled history starts at 0.3.4. The release build requires a matching history entry, and the publisher generates GitHub notes from that entry by default. Tray/update checks cover the history, selection, installed marker, narrow layout, reopening, first launch, upgrade, restart, older-version return, and welcome-to-history navigation.
 
 The approved ivory fan-and-ring artwork is embedded as a multi-resolution Windows icon in the executable and installer. The application window, taskbar, system tray, and Start menu shortcuts use the same artwork. The tray retains its update-available badge. The icon source and conversion script are included with the application source.
 

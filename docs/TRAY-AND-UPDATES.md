@@ -1,4 +1,4 @@
-# Tablet Pro Radial 0.3.9
+# Tablet Pro Radial 0.3.10
 
 The bronze-and-ivory fan icon beside the Windows clock stays available while the editor
 and overlay are hidden. Windows may initially place it under the hidden-icons
@@ -9,6 +9,12 @@ Apply, Discard, or Keep editing before quitting. Updates and Quit are also in th
 editor's bottom bar. The Glass rendering fix from 0.3.2 is included.
 
 ## Update log
+
+After a new version is installed, **What's new** opens automatically the first
+time that version runs, including radial, docked, and editor launches. It shows
+that version's additions, improvements, and fixes offline. Choose **Let's go**
+to continue or **View update log** to browse earlier releases. Each version is
+shown once per Windows account; normal restarts do not repeat it.
 
 Choose **Update log** from the tray, editor's bottom bar, or Updates window.
 Select a version to see its release date and changes under New, Improved, and

@@ -19,6 +19,7 @@
 #include <QMouseEvent>
 #include <QComboBox>
 #include <QDialog>
+#include <QPushButton>
 #include <QTextBrowser>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -111,6 +112,53 @@ void networkTests(){
     net.queue.append({200,QByteArray(UpdateChecker::MaxMetadataBytes+1,'x')});checker.check();drain(checker);expect(checker.status().contains("too large"),"response bound enforced");
     expect(checker.setRepository("test/another")&&checker.lastChecked().isEmpty(),"changing source clears prior result");
     UpdateChecker restored(nullptr,temp.path()+"/settings.ini",&net,"0.3.3");expect(restored.repository()=="test/another"&&restored.automatic(),"preferences persist");
+}
+QDialog* notesWindow(const char* name){
+    for(auto* widget:QApplication::topLevelWidgets())if(widget->objectName()==name)return qobject_cast<QDialog*>(widget);
+    return nullptr;
+}
+void whatsNewTests(){
+    QTemporaryDir temp;StudioController studio(nullptr,temp.path()+"/profile",true);QQuickWindow overlay;
+    const auto realVersion=QCoreApplication::applicationVersion();
+    QSettings settings;
+    settings.remove("updates/whatsNewSeen");settings.sync();
+    QCoreApplication::setApplicationVersion("0.3.9");
+    {
+        DesktopShell first(&studio,&overlay,nullptr,true);
+        first.showWhatsNewIfNeeded();QCoreApplication::processEvents();
+        auto* popup=notesWindow("whatsNewDialog");expect(popup&&popup->isVisible(),"first launch shows what's new offline");
+        expect(popup->findChild<QTextBrowser*>("historyContent")->toPlainText().contains("See what changed in every update"),"welcome uses the running version's notes, not the newest bundled entry");
+        expect(!popup->findChild<QComboBox*>("historyVersionPicker")->isVisible(),"welcome focuses on the installed version");
+        expect(QSettings().value("updates/whatsNewSeen/0.3.9").toBool(),"shown version is persisted");
+        first.showWhatsNewIfNeeded();expect(notesWindow("whatsNewDialog")==popup,"repeated startup callback does not duplicate the welcome");
+        popup->findChild<QPushButton*>("releaseNotesCloseButton")->click();QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        expect(!notesWindow("whatsNewDialog"),"Let's go closes the welcome");
+    }
+    QCoreApplication::setApplicationVersion(realVersion);
+    {
+        DesktopShell upgraded(&studio,&overlay,nullptr,true);
+        upgraded.showUpdateLog();expect(!QSettings().value("updates/whatsNewSeen/"+realVersion,false).toBool(),"manual history does not suppress the first-launch welcome");
+        upgraded.showWhatsNewIfNeeded();QCoreApplication::processEvents();
+        auto* popup=notesWindow("whatsNewDialog");expect(popup&&popup->isVisible(),"a newly installed version shows its welcome");
+        expect(popup->findChild<QComboBox*>("historyVersionPicker")->currentText().startsWith(realVersion),"welcome selects the installed version");
+        expect(popup->findChild<QTextBrowser*>("historyContent")->toPlainText()==notesWindow("updateHistoryDialog")->findChild<QTextBrowser*>("historyContent")->toPlainText(),"welcome and full log show the same release changes");
+        expect(popup->grab().save(QDir::currentPath()+"/whats-new-current.png"),"welcome renders");
+        popup->resize(400,380);QCoreApplication::processEvents();
+        expect(popup->findChild<QPushButton*>("releaseNotesCloseButton")->geometry().right()<popup->width(),"welcome actions fit the narrow window");
+        expect(popup->grab().save(QDir::currentPath()+"/whats-new-narrow.png"),"narrow welcome renders");
+        popup->findChild<QPushButton*>("whatsNewHistoryButton")->click();QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        expect(!notesWindow("whatsNewDialog")&&notesWindow("updateHistoryDialog")->isVisible(),"welcome opens the full history");
+    }
+    {
+        DesktopShell restarted(&studio,&overlay,nullptr,true);restarted.showWhatsNewIfNeeded();
+        expect(!notesWindow("whatsNewDialog"),"same version stays quiet after restarting");
+        restarted.showUpdateLog();expect(notesWindow("updateHistoryDialog"),"history remains available after dismissing welcome");
+    }
+    QCoreApplication::setApplicationVersion("0.3.9");
+    { DesktopShell older(&studio,&overlay,nullptr,true);older.showWhatsNewIfNeeded();expect(!notesWindow("whatsNewDialog"),"returning to a previously seen version does not repeat its welcome"); }
+    QCoreApplication::setApplicationVersion("9.9.9");
+    { DesktopShell missing(&studio,&overlay,nullptr,true);missing.showWhatsNewIfNeeded();expect(!notesWindow("whatsNewDialog")&&!QSettings().value("updates/whatsNewSeen/9.9.9",false).toBool(),"missing release notes neither show the wrong version nor consume its marker"); }
+    QCoreApplication::setApplicationVersion(realVersion);
 }
 void trayTests(){
     QTemporaryDir temp;StudioController studio(nullptr,temp.path()+"/profile",true);
@@ -239,5 +287,5 @@ void trayTests(){
 int main(int argc,char** argv){
     QApplication app(argc,argv);app.setQuitOnLastWindowClosed(false);app.setOrganizationName("TabletProTests");app.setApplicationName("RadialUpdates");app.setApplicationVersion(TABLETPRO_VERSION);QQuickStyle::setStyle("Basic");
     QTemporaryDir settings;QStandardPaths::setTestModeEnabled(true);QSettings::setDefaultFormat(QSettings::IniFormat);QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,settings.path());
-    try{parseTests();networkTests();trayTests();std::cout<<checks<<" tray/update checks passed\n";return 0;}catch(const std::exception& e){std::cerr<<"FAILED: "<<e.what()<<'\n';return 1;}
+    try{parseTests();networkTests();trayTests();whatsNewTests();std::cout<<checks<<" tray/update checks passed\n";return 0;}catch(const std::exception& e){std::cerr<<"FAILED: "<<e.what()<<'\n';return 1;}
 }

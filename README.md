@@ -8,7 +8,7 @@ A native Windows radial menu and editor with pen-button invocation, a docked rai
 
 Open the latest release and download the file ending in **Windows-x64-Setup.exe**. Run it on each computer. Setup installs for your Windows account and includes the Qt runtime; administrator access and a separate Qt installation are not required. The installer is currently unsigned.
 
-The current application version is **0.3.9**. This is the version used by the installer and updater.
+The current application version is **0.3.10**. This is the version used by the installer and updater.
 
 ## Get updates
 
@@ -17,6 +17,8 @@ Right-click the bronze-and-ivory fan icon beside the Windows clock and choose **
 Choose **Check now → Download update → Install update**. Automatic checks also notify you when a newer stable release is available. Downloads are checked against GitHub's SHA-256 digest before installation. Your saved menus and preferences are kept.
 
 Choose **Update log** from the tray, editor, or Updates window to browse changes by version. The installed version is marked, and the included history works offline. Changes are grouped under **New**, **Improved**, and **Fixed**.
+
+After installing a new version, **What's new** opens automatically on its first launch in radial, docked, or editor mode. It shows that version's changes once per Windows account. Choose **Let's go** to continue or **View update log** for the full history. Regular restarts and reinstalling the same version do not repeat it.
 
 For the older 0.3.3 build, enter `justicefrangipane/Tablet-Pro-Radial` in its Updates dialog once, then check for updates. You can also install the latest release directly.
 

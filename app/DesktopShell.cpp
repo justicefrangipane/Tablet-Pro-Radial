@@ -18,6 +18,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QQuickWindow>
+#include <QSettings>
 #include <QTextEdit>
 #include <QTextBrowser>
 #include <QTextDocument>
@@ -27,6 +28,15 @@ static void initializeBrandResources() { Q_INIT_RESOURCE(radial_brand); }
 static void initializeHistoryResources() { Q_INIT_RESOURCE(radial_history); }
 
 namespace tabletpro {
+namespace {
+const QJsonArray& releaseHistory() {
+    static const auto releases=[] {
+        initializeHistoryResources();QFile file(":/history/update-history.json");
+        return file.open(QIODevice::ReadOnly)?QJsonDocument::fromJson(file.readAll()).object()["releases"].toArray():QJsonArray{};
+    }();
+    return releases;
+}
+}
 QIcon DesktopShell::icon(bool update) {
     static const QIcon brand=[] { initializeBrandResources(); return QIcon(":/icons/radial.ico"); }();
     if(!update)return brand;
@@ -71,21 +81,33 @@ DesktopShell::DesktopShell(StudioController* studio,QQuickWindow* overlay,QObjec
         QTimer::singleShot(8000,this,[this]{m_updates.check(false);});
     }
 }
-DesktopShell::~DesktopShell(){m_tray.hide();delete m_dialog.data();delete m_history.data();}
+DesktopShell::~DesktopShell(){m_tray.hide();delete m_dialog.data();delete m_history.data();delete m_whatsNew.data();}
 void DesktopShell::toggleOverlay() { if(m_overlay->isVisible())m_studio->hideOverlay();else m_studio->showOverlay(); }
 void DesktopShell::requestQuit(){m_installPending=false;emit quitRequested();}
 void DesktopShell::finishQuit(){
     if(m_installPending&&!m_updates.launchInstaller()){m_installPending=false;showUpdates();return;}
     m_tray.hide();emit exitApproved();
 }
-void DesktopShell::showUpdateLog() {
-    if(m_history){m_history->show();m_history->raise();m_history->activateWindow();return;}
-    static const auto releases=[] {
-        initializeHistoryResources();QFile file(":/history/update-history.json");
-        return file.open(QIODevice::ReadOnly)?QJsonDocument::fromJson(file.readAll()).object()["releases"].toArray():QJsonArray{};
-    }();
-    auto* dialog=new QDialog;dialog->setAttribute(Qt::WA_DeleteOnClose);m_history=dialog;
-    dialog->setObjectName("updateHistoryDialog");dialog->setWindowTitle("Tablet Pro Radial — Update log");dialog->setWindowIcon(icon());
+void DesktopShell::showUpdateLog() { showReleaseNotes(false); }
+void DesktopShell::showWhatsNewIfNeeded() {
+    const auto version=m_updates.currentVersion();
+    QSettings settings;const auto key="updates/whatsNewSeen/"+version;
+    if(settings.value(key,false).toBool())return;
+    // Never show another release's notes or consume the marker if this build has no entry.
+    bool found=false;
+    for(const auto& release:releaseHistory())if(release.toObject()["version"].toString()==version){found=true;break;}
+    if(!found)return;
+    if(auto* dialog=showReleaseNotes(true);dialog&&dialog->isVisible()){
+        settings.setValue(key,true);settings.sync();
+    }
+}
+QDialog* DesktopShell::showReleaseNotes(bool whatsNew) {
+    auto& open=whatsNew?m_whatsNew:m_history;
+    if(open){open->show();open->raise();open->activateWindow();return open;}
+    const auto& releases=releaseHistory();
+    auto* dialog=new QDialog;dialog->setAttribute(Qt::WA_DeleteOnClose);open=dialog;
+    dialog->setObjectName(whatsNew?"whatsNewDialog":"updateHistoryDialog");
+    dialog->setWindowTitle(whatsNew?"Tablet Pro Radial — What's new":"Tablet Pro Radial — Update log");dialog->setWindowIcon(icon());
     dialog->resize(610,520);dialog->setMinimumSize(400,380);
     dialog->setStyleSheet("QDialog { background:#29211c; color:#ffe5bd; } QLabel { color:#ffe5bd; }"
         "QComboBox { background:#403126; color:#ffe5bd; border:1px solid #806046; border-radius:6px; padding:8px; }"
@@ -94,7 +116,7 @@ void DesktopShell::showUpdateLog() {
         "QPushButton { background:#403126; color:#ffe5bd; border:1px solid #806046; border-radius:6px; padding:8px 14px; }"
         "QPushButton:hover { background:#5b422f; } QPushButton:focus { border:1px solid #ffe5bd; }");
     auto* layout=new QVBoxLayout(dialog);layout->setContentsMargins(24,22,24,20);layout->setSpacing(14);
-    auto* heading=new QLabel("Update log");auto font=heading->font();font.setPointSize(20);font.setWeight(QFont::DemiBold);heading->setFont(font);layout->addWidget(heading);
+    auto* heading=new QLabel(whatsNew?"What's new":"Update log");auto font=heading->font();font.setPointSize(20);font.setWeight(QFont::DemiBold);heading->setFont(font);layout->addWidget(heading);
     auto* installed=new QLabel("Installed version: "+m_updates.currentVersion());installed->setObjectName("historyInstalledVersion");layout->addWidget(installed);
     auto* versions=new QComboBox;versions->setObjectName("historyVersionPicker");versions->setAccessibleName("Version history");
     int current=0;
@@ -105,11 +127,12 @@ void DesktopShell::showUpdateLog() {
         versions->addItem(version+"  ·  "+date+(active?"  ·  Installed":""));
     }
     layout->addWidget(versions);
+    versions->setVisible(!whatsNew);
     auto* content=new QTextBrowser;content->setObjectName("historyContent");content->setAccessibleName("Changes in the selected version");
     content->setOpenExternalLinks(false);content->setOpenLinks(false);
     content->document()->setDefaultStyleSheet("h2 { font-size:19px; color:#ffe5bd; margin-top:4px; margin-bottom:16px; } h3 { font-size:14px; color:#e4bb84; margin-top:16px; margin-bottom:6px; } li { margin-bottom:9px; }");
     layout->addWidget(content,1);
-    const auto render=[content](int index){
+    const auto render=[content,releases](int index){
         if(index<0||index>=releases.size()){content->setPlainText("Update history is not available in this build.");return;}
         const auto release=releases[index].toObject();
         QString html="<h2>"+release["title"].toString().toHtmlEscaped()+"</h2>";
@@ -123,10 +146,18 @@ void DesktopShell::showUpdateLog() {
     };
     connect(versions,qOverload<int>(&QComboBox::currentIndexChanged),dialog,render);
     versions->setCurrentIndex(current);render(releases.isEmpty()?-1:current);
-    auto* footer=new QHBoxLayout;auto* offline=new QLabel("Included with the app · available offline");offline->setWordWrap(true);
-    offline->setStyleSheet("color:#c4b3a1;");footer->addWidget(offline,1);
-    auto* close=new QPushButton("Close");connect(close,&QPushButton::clicked,dialog,&QDialog::close);footer->addWidget(close);layout->addLayout(footer);
+    auto* footer=new QHBoxLayout;
+    if(whatsNew){
+        auto* log=new QPushButton("View update log");log->setObjectName("whatsNewHistoryButton");
+        connect(log,&QPushButton::clicked,this,[this,dialog]{dialog->close();showUpdateLog();});footer->addWidget(log);footer->addStretch();
+    }else{
+        auto* offline=new QLabel("Included with the app · available offline");offline->setWordWrap(true);
+        offline->setStyleSheet("color:#c4b3a1;");footer->addWidget(offline,1);
+    }
+    auto* close=new QPushButton(whatsNew?"Let's go":"Close");close->setObjectName("releaseNotesCloseButton");close->setDefault(true);
+    connect(close,&QPushButton::clicked,dialog,&QDialog::close);footer->addWidget(close);layout->addLayout(footer);
     dialog->show();dialog->raise();dialog->activateWindow();
+    return dialog;
 }
 void DesktopShell::showUpdates() {
     if(m_dialog){m_dialog->show();m_dialog->raise();m_dialog->activateWindow();return;}
