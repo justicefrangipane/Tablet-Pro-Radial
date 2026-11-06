@@ -1,0 +1,12 @@
+name: Portable core
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build-core -DTABLETPRO_BUILD_DESKTOP=OFF -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build-core --parallel 2
+      - run: ctest --test-dir build-core --output-on-failure --no-tests=error

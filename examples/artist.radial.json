@@ -1,0 +1,321 @@
+{
+    "format": "tabletpro.radial",
+    "id": "tablet-pro.default",
+    "name": "Artist tools",
+    "nodes": [
+        {
+            "action": {
+                "id": "command.brush",
+                "key": "B",
+                "modifiers": [
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "paintbrush",
+            "id": "brush",
+            "kind": "action",
+            "label": "Brush"
+        },
+        {
+            "action": {
+                "id": "command.color",
+                "key": "I",
+                "modifiers": [
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "palette",
+            "id": "color",
+            "kind": "action",
+            "label": "Color"
+        },
+        {
+            "action": {
+                "id": "command.eraser",
+                "key": "E",
+                "modifiers": [
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "eraser",
+            "id": "eraser",
+            "kind": "action",
+            "label": "Eraser"
+        },
+        {
+            "action": {
+                "id": "command.select",
+                "key": "L",
+                "modifiers": [
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "lasso-select",
+            "id": "select",
+            "kind": "action",
+            "label": "Select"
+        },
+        {
+            "icon": "settings-2",
+            "id": "settings",
+            "kind": "group",
+            "label": "Settings",
+            "slots": [
+                "settings.undo",
+                "settings.redo",
+                "settings.save",
+                null,
+                "settings.escape",
+                "settings.delete"
+            ]
+        },
+        {
+            "action": {
+                "id": "command.settings.delete",
+                "key": "Delete",
+                "modifiers": [
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "trash-2",
+            "id": "settings.delete",
+            "kind": "action",
+            "label": "Delete"
+        },
+        {
+            "action": {
+                "id": "command.settings.escape",
+                "key": "Escape",
+                "modifiers": [
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "x",
+            "id": "settings.escape",
+            "kind": "action",
+            "label": "Escape"
+        },
+        {
+            "action": {
+                "id": "command.settings.redo",
+                "key": "Z",
+                "modifiers": [
+                    "Ctrl",
+                    "Shift"
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "redo-2",
+            "id": "settings.redo",
+            "kind": "action",
+            "label": "Redo"
+        },
+        {
+            "action": {
+                "id": "command.settings.save",
+                "key": "S",
+                "modifiers": [
+                    "Ctrl"
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "save",
+            "id": "settings.save",
+            "kind": "action",
+            "label": "Save"
+        },
+        {
+            "action": {
+                "id": "command.settings.undo",
+                "key": "Z",
+                "modifiers": [
+                    "Ctrl"
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "undo-2",
+            "id": "settings.undo",
+            "kind": "action",
+            "label": "Undo"
+        },
+        {
+            "icon": "type",
+            "id": "text",
+            "kind": "group",
+            "label": "Text",
+            "slots": [
+                "text.bold",
+                "text.italic",
+                "text.copy",
+                "text.paste",
+                "text.cut",
+                "text.more"
+            ]
+        },
+        {
+            "action": {
+                "id": "command.text.bold",
+                "key": "B",
+                "modifiers": [
+                    "Ctrl"
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "bold",
+            "id": "text.bold",
+            "kind": "action",
+            "label": "Bold"
+        },
+        {
+            "action": {
+                "id": "command.text.copy",
+                "key": "C",
+                "modifiers": [
+                    "Ctrl"
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "copy",
+            "id": "text.copy",
+            "kind": "action",
+            "label": "Copy"
+        },
+        {
+            "action": {
+                "id": "command.text.cut",
+                "key": "X",
+                "modifiers": [
+                    "Ctrl"
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "scissors",
+            "id": "text.cut",
+            "kind": "action",
+            "label": "Cut"
+        },
+        {
+            "action": {
+                "id": "command.text.italic",
+                "key": "I",
+                "modifiers": [
+                    "Ctrl"
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "italic",
+            "id": "text.italic",
+            "kind": "action",
+            "label": "Italic"
+        },
+        {
+            "action": {
+                "id": "command.text.line-end",
+                "key": "End",
+                "modifiers": [
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "arrow-right-to-line",
+            "id": "text.line-end",
+            "kind": "action",
+            "label": "Line end"
+        },
+        {
+            "action": {
+                "id": "command.text.line-start",
+                "key": "Home",
+                "modifiers": [
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "arrow-left-to-line",
+            "id": "text.line-start",
+            "kind": "action",
+            "label": "Line start"
+        },
+        {
+            "icon": "ellipsis",
+            "id": "text.more",
+            "kind": "group",
+            "label": "More text",
+            "slots": [
+                "text.underline",
+                "text.select-all",
+                null,
+                null,
+                "text.line-start",
+                "text.line-end"
+            ]
+        },
+        {
+            "action": {
+                "id": "command.text.paste",
+                "key": "V",
+                "modifiers": [
+                    "Ctrl"
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "clipboard-paste",
+            "id": "text.paste",
+            "kind": "action",
+            "label": "Paste"
+        },
+        {
+            "action": {
+                "id": "command.text.select-all",
+                "key": "A",
+                "modifiers": [
+                    "Ctrl"
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "text-select",
+            "id": "text.select-all",
+            "kind": "action",
+            "label": "Select all"
+        },
+        {
+            "action": {
+                "id": "command.text.underline",
+                "key": "U",
+                "modifiers": [
+                    "Ctrl"
+                ],
+                "text": "",
+                "type": "shortcut"
+            },
+            "icon": "underline",
+            "id": "text.underline",
+            "kind": "action",
+            "label": "Underline"
+        }
+    ],
+    "rootSlots": [
+        "brush",
+        "eraser",
+        "select",
+        "color",
+        "text",
+        "settings"
+    ],
+    "schemaVersion": 1
+}

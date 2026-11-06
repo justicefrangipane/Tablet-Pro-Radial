@@ -1,0 +1,54 @@
+TABLET PRO RADIAL STUDIO 0.3 — WINDOWS x64 TEST BUILD
+
+Open Tablet Pro Radial from its desktop shortcut. The Start menu folder
+"Tablet Pro Radial 0.3" also contains "Radial menu", "Docked rail", and "Editor".
+
+Close the original Tablet Pro Studio and version 0.2 while using this version.
+Hover with the pen and press its first side button to hide or show the menu.
+Choose Edit in the center hub, then Pen button, to change the selected button.
+
+The center hub contains Dock/Undock and Edit. The three-dot menu contains
+Sound, Glass, Hide, and Quit. The dock control shows the layout it will open.
+Press and drag outward from Text to reveal its six separated wedge buttons.
+Release on an icon to choose it. Apply editor changes before using them.
+
+The menu now opens with a short pop and closes into voxels. Glass is optional:
+supported Windows 11 configurations use acrylic; Windows 10 uses translucency.
+The existing optional audio feedback is retained. No Unfolded source code or
+sound assets were available, so this version does not contain copied Unfolded
+animations or sounds.
+
+SAVE A TEST RADIAL
+In the editor, choose "Save test radial..." to save Test.radial.json with the
+menu, Sound, Glass, reduced-motion, and animation-duration settings. Choose
+Open to load a saved file, then Apply when you want to use its menu and settings.
+A ready-made example is included at examples\Test.radial.json.
+
+WACOM / XENCELABS / DRIVER-MAPPED BUTTONS
+Assign Ctrl+Alt+Space to the side button in the pen driver's settings.
+Turn off "Use Tablet Pro pen input" in Pen button setup to avoid two methods
+responding to one press. Release the side button before choosing an action.
+Driver-mapped shortcut modifiers are allowed a brief release interval; if they
+stay held, the action is cancelled. Ctrl+Alt+Space also works from a keyboard.
+
+Use one running copy at a time. Quit before using another shortcut.
+
+INSTALLATION AND REMOVAL
+This version installs for your account in:
+%LOCALAPPDATA%\Programs\TabletProRadial\0.3.0
+No Qt installation or administrator setup is needed.
+Version 0.2 stays installed. Saved settings and the applied profile are shared
+with the new version. Run only one version at a time.
+Uninstall through Windows Settings > Apps or the installed Uninstall.exe.
+Saved settings, profiles, and files you add are preserved. Folders that still
+contain saved profiles or other user files are left in place.
+
+VALIDATION STATUS
+The user confirmed that version 0.2 opens and works. This 0.3 update requires
+its own Windows hardware check. The Windows executable is cross-compiled and
+the packaged dependencies are checked statically. The application and installer
+are not executed on Windows in the build environment. Physical stylus, glass,
+focus, input release, and GPU behavior still require device testing.
+This is an unsigned development build.
+
+See docs/RUN-WINDOWS.md for setup and docs/WINDOWS-VALIDATION.md for acceptance.
