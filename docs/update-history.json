@@ -2,6 +2,35 @@
   "app": "Tablet Pro Radial",
   "releases": [
     {
+      "version": "0.3.15",
+      "date": "2026-11-06",
+      "title": "Build parent menus by dragging",
+      "new": [
+        "Drag a button onto a parent in the editor's menu list to move it into that parent's next empty child slot. Choose Arrange buttons to do the same in the radial or docked preview.",
+        "Hold a parent for 300 milliseconds to open its child radial at the latest pen-tip position, or slide out to open it at your finger. Existing parents support both gestures in radial and docked mode.",
+        "Add parent, Add child, and Make parent simplify menu creation. Make parent keeps the original action as its first child."
+      ],
+      "improved": [
+        "Green drop feedback identifies a valid parent. The list scrolls as you drag near its edge. Esc cancels a drag, and Undo restores the previous layout.",
+        "Moving a parent keeps its entire child tree. Full parents, loops, and moves beyond four parent levels are blocked without replacing buttons. Changes remain a draft until Apply.",
+        "The pen can select a child while the launching finger stays down. The original menu steps aside while the child radial is open; its center goes back through nested menus."
+      ]
+    },
+    {
+      "version": "0.3.14",
+      "date": "2026-11-06",
+      "title": "Parent menus at your pen or finger",
+      "new": [
+        "Hold a parent button for 300 milliseconds to open its child radial at the latest pen-tip position. Slide out to open it at your finger instead, then release over a child or lift in the center and tap one.",
+        "The editor now has Add parent, Add child, and Make parent. Make parent keeps the original action as the first child, and named child slots make editing easier."
+      ],
+      "improved": [
+        "Existing parent buttons use the same gestures in radial and docked mode. The center goes back through nested menus; Esc closes them.",
+        "Pen and finger input are tracked separately, allowing the pen to choose a child while the launching finger stays down.",
+        "The original menu steps aside while its child radial is open. Child modifiers use the floating menu's next-pen-stroke behavior."
+      ]
+    },
+    {
       "version": "0.3.13",
       "date": "2026-11-06",
       "title": "Neater rail highlights",

@@ -10,6 +10,7 @@
 #include <QVector>
 #include <optional>
 #include "PenStrokeMonitor.h"
+#include "PenPositionTracker.h"
 
 namespace tabletpro {
 
@@ -50,6 +51,7 @@ public:
     bool setModifierHeld(const QString& key, bool held, quintptr target = 0);
     void releaseModifiers();
     bool armNextStroke(const QString& key);
+    std::optional<QPointF> penPositionInOverlay() const;
     QStringList heldModifiers() const { return m_heldModifiers; }
     bool registerToggleHotkey();
     void unregisterToggleHotkey();
@@ -100,6 +102,7 @@ private:
     QStringList m_heldModifiers;
     QStringList m_strokeModifiers;
     PenStrokeMonitor m_penStroke;
+    PenPositionTracker m_penPosition;
     quint64 m_strokeGeneration=0;
     quintptr m_modifierTarget = 0;
     quint32 m_modifierProcess = 0, m_modifierThread = 0;

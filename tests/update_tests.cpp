@@ -21,6 +21,7 @@
 #include <QTouchEvent>
 #include <QPointingDevice>
 #include <QtTest/qtesttouch.h>
+#include <QtTest/QTest>
 #include <QComboBox>
 #include <QDialog>
 #include <QPushButton>
@@ -166,6 +167,101 @@ void whatsNewTests(){
     QCoreApplication::setApplicationVersion("9.9.9");
     { DesktopShell missing(&studio,&overlay,nullptr,true);missing.showWhatsNewIfNeeded();expect(!notesWindow("whatsNewDialog")&&!QSettings().value("updates/whatsNewSeen/9.9.9",false).toBool(),"missing release notes neither show the wrong version nor consume its marker"); }
     QCoreApplication::setApplicationVersion(realVersion);
+}
+void parentPointerUiTests(){
+    QTemporaryDir temp;StudioController studio(nullptr,temp.path()+"/profile",true);
+    studio.setReducedMotion(true);studio.runtime()->setProfile(radial::legacyDefaultProfile());
+    QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("studio",&studio);engine.rootContext()->setContextProperty("startInEditor",false);
+    engine.load(QUrl("qrc:/qml/Main.qml"));expect(!engine.rootObjects().isEmpty(),"parent input UI loads");
+    auto* editor=qobject_cast<QQuickWindow*>(engine.rootObjects().first());auto* overlay=editor->findChild<QQuickWindow*>("runtimeOverlay");
+    overlay->resize(900,700);overlay->show();studio.runtime()->toggleDock();QTest::qWait(50);
+    QVariantMap text;for(const auto& value:studio.runtime()->buttons())if(value.toMap()["id"]=="text")text=value.toMap();
+    const QPoint launch(text["dockX"].toInt(),text["dockY"].toInt());auto* finger=QTest::createTouchDevice();
+    int reports=0;QObject::connect(studio.runtime(),&MenuSession::actionReported,[&]{++reports;});
+    QTest::touchEvent(overlay,finger).press(1,launch,overlay);QTest::qWait(340);
+    expect(studio.runtime()->parentMenuOpen(),"actual touch hold opens a parent radial");
+    QVariantMap bold;for(const auto& value:studio.runtime()->parentButtons())if(value.toMap()["id"]=="text.bold")bold=value.toMap();
+    const QPointF at(bold["cx"].toDouble(),bold["cy"].toDouble());
+    QPointingDevice penDevice("parent test pen",4001,QInputDevice::DeviceType::Stylus,QPointingDevice::PointerType::Pen,QInputDevice::Capability::Position|QInputDevice::Capability::Pressure,1,1);
+    const auto pen=[&](QEvent::Type type){const bool up=type==QEvent::TabletRelease;QTabletEvent event(type,&penDevice,at,overlay->mapToGlobal(at.toPoint()),up?0:0.5,0,0,0,0,0,Qt::NoModifier,Qt::LeftButton,up?Qt::NoButton:Qt::LeftButton);QCoreApplication::sendEvent(overlay,&event);QCoreApplication::processEvents();};
+    pen(QEvent::TabletPress);expect(studio.runtime()->parentSelectedId()=="text.bold","pen selects a child while launching touch remains down");
+    QTest::touchEvent(overlay,finger).release(1,launch,overlay);
+    expect(studio.runtime()->parentMenuOpen()&&reports==0,"launching touch release leaves the pen selection intact");
+    pen(QEvent::TabletRelease);expect(!studio.runtime()->parentMenuOpen()&&reports==1,"actual pen release commits exactly one child action");
+    QTest::touchEvent(overlay,finger).press(2,launch,overlay);
+    QTest::touchEvent(overlay,finger).move(2,QPoint(240,350),overlay);QTest::qWait(25);
+    if(!studio.runtime()->parentMenuOpen())std::cerr<<"slide state: "<<studio.runtime()->status().toStdString()<<" active="<<studio.runtime()->active()<<'\n';
+    expect(studio.runtime()->parentMenuOpen()&&studio.runtime()->parentCenter()==QPointF(240,350),"actual touch slide opens the circle at the touch position");
+    QTest::touchEvent(overlay,finger).release(2,QPoint(240,350),overlay);studio.runtime()->cancel();overlay->hide();
+}
+void editorDragUiTests(){
+    QTemporaryDir temp;StudioController studio(nullptr,temp.path()+"/profile",true);studio.setReducedMotion(true);
+    QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("studio",&studio);engine.rootContext()->setContextProperty("startInEditor",true);
+    engine.load(QUrl("qrc:/qml/Main.qml"));expect(!engine.rootObjects().isEmpty(),"drag editor loads");
+    auto* editor=qobject_cast<QQuickWindow*>(engine.rootObjects().first());editor->resize(1180,1100);editor->show();editor->requestActivate();QTest::qWait(80);
+    auto* surface=editor->findChild<QQuickItem*>("editorSurface");auto* list=editor->findChild<QQuickItem*>("outlineList");
+    expect(surface&&list,"drag source surfaces are available");
+    std::function<QQuickItem*(QQuickItem*,const QString&)> findItem=[&](QQuickItem* parent,const QString& name)->QQuickItem*{
+        if(parent->objectName()==name)return parent;
+        for(auto* child:parent->childItems())if(auto* found=findItem(child,name))return found;
+        return nullptr;
+    };
+    const auto rowPoint=[&](const QString& id){
+        auto* row=findItem(list,"outline-"+id);
+        if(!row)throw std::runtime_error(("Missing outline row "+id).toStdString());
+        return row->mapToScene({row->width()/2,row->height()/2}).toPoint();
+    };
+    const auto wheelPoint=[&](const QString& id){
+        for(const auto& entry:studio.preview()->buttons()){
+            const auto b=entry.toMap();if(b["id"]==id)return surface->mapToScene({b[studio.preview()->docked()?"dockX":"cx"].toDouble(),b[studio.preview()->docked()?"dockY":"cy"].toDouble()}).toPoint();
+        }throw std::runtime_error("Missing preview button");
+    };
+    const auto moveMouse=[&](QPoint from,QPoint to){QTest::mousePress(editor,Qt::LeftButton,Qt::NoModifier,from);QTest::mouseMove(editor,from+QPoint(12,0),20);QTest::mouseMove(editor,to,20);QTest::qWait(30);};
+    const auto before=studio.draft();const auto brush=rowPoint("brush"),tools=rowPoint("tools");
+    moveMouse(brush,tools);
+    expect(editor->property("draggedButtonId")=="brush"&&editor->property("dropParentId")=="tools"&&editor->property("dropProblem").toString().isEmpty(),"real list drag recognizes parent and shows valid feedback");
+    if(!qEnvironmentVariableIsEmpty("RADIAL_DRAG_CAPTURE"))editor->grabWindow().save(qEnvironmentVariable("RADIAL_DRAG_CAPTURE")+"-list.png");
+    QTest::mouseRelease(editor,Qt::LeftButton,Qt::NoModifier,tools);QTest::qWait(40);
+    expect(!studio.draft().rootSlots[0]&&studio.draft().nodes.at("tools").children[4]=="brush","list mouse drop moves exactly one button into the parent");
+    studio.undo();QTest::qWait(40);expect(studio.draft()==before,"list drop is one undoable edit");
+    auto* finger=QTest::createTouchDevice();
+    QTest::touchEvent(editor,finger).press(12,brush,editor);
+    QTest::touchEvent(editor,finger).move(12,brush+QPoint(0,14),editor);QTest::qWait(25);
+    QTest::touchEvent(editor,finger).move(12,tools,editor);QTest::qWait(25);
+    QTest::touchEvent(editor,finger).release(12,tools,editor);QTest::qWait(40);
+    expect(studio.draft().nodes.at("tools").children[4]=="brush","vertical touch drag in the outline moves the button instead of flicking the list");
+    studio.undo();editor->resize(1180,760);list->setProperty("contentY",0);QTest::qWait(50);
+    const auto scrollStart=rowPoint("brush"),scrollEdge=list->mapToScene({list->width()/2,list->height()-8}).toPoint();
+    moveMouse(scrollStart,scrollEdge);QTest::qWait(450);
+    expect(list->property("contentY").toDouble()>50&&editor->property("draggedButtonId")=="brush","outline scrolls near its edge without losing the dragged source");
+    const auto scrolledTools=rowPoint("tools");QTest::mouseMove(editor,scrolledTools,20);QTest::qWait(20);QTest::mouseRelease(editor,Qt::LeftButton,Qt::NoModifier,scrolledTools);QTest::qWait(40);
+    expect(studio.draft().nodes.at("tools").children[4]=="brush","drop reaches a parent revealed by automatic scrolling");
+    studio.undo();editor->resize(1180,1100);list->setProperty("contentY",0);QTest::qWait(50);
+    editor->setProperty("arrangeButtons",true);QTest::qWait(30);
+    const auto rootBrush=wheelPoint("brush"),rootTools=wheelPoint("tools");moveMouse(rootBrush,rootTools);
+    expect(editor->property("dropParentId")=="tools"&&!studio.preview()->active(),"arrange preview drag targets parent without running its hold gesture");
+    if(!qEnvironmentVariableIsEmpty("RADIAL_DRAG_CAPTURE"))editor->grabWindow().save(qEnvironmentVariable("RADIAL_DRAG_CAPTURE")+"-preview.png");
+    QTest::mouseRelease(editor,Qt::LeftButton,Qt::NoModifier,rootTools);QTest::qWait(40);
+    expect(studio.draft().nodes.at("tools").children[4]=="brush","preview mouse drop creates a child");studio.undo();QTest::qWait(40);
+    QTest::touchEvent(editor,finger).press(11,rootBrush,editor);
+    QTest::touchEvent(editor,finger).move(11,rootBrush+QPoint(14,0),editor);QTest::qWait(25);
+    QTest::touchEvent(editor,finger).move(11,rootTools,editor);QTest::qWait(25);
+    QTest::touchEvent(editor,finger).release(11,rootTools,editor);QTest::qWait(40);
+    expect(studio.draft().nodes.at("tools").children[4]=="brush","preview touch drag creates a child");studio.undo();QTest::qWait(40);
+    QPointingDevice penDevice("editor drag pen",4002,QInputDevice::DeviceType::Stylus,QPointingDevice::PointerType::Pen,QInputDevice::Capability::Position|QInputDevice::Capability::Pressure,1,1);
+    const auto pen=[&](QEvent::Type type,QPoint at){const bool up=type==QEvent::TabletRelease;QTabletEvent event(type,&penDevice,at,editor->mapToGlobal(at),up?0:0.5,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,up?Qt::NoButton:Qt::LeftButton);QCoreApplication::sendEvent(editor,&event);QCoreApplication::processEvents();};
+    pen(QEvent::TabletPress,rootBrush);pen(QEvent::TabletMove,rootBrush+QPoint(14,0));pen(QEvent::TabletMove,rootTools);pen(QEvent::TabletRelease,rootTools);QTest::qWait(40);
+    expect(studio.draft().nodes.at("tools").children[4]=="brush","preview stylus drag creates a child");studio.undo();QTest::qWait(40);
+    moveMouse(rootBrush,rootTools);QTest::keyClick(editor,Qt::Key_Escape);QCoreApplication::processEvents();
+    if(!editor->property("draggedButtonId").toString().isEmpty())std::cerr<<"Escape left drag active; editor active="<<editor->isActive()<<" focus="<<(QGuiApplication::focusWindow()==editor)<<'\n';
+    QTest::mouseRelease(editor,Qt::LeftButton,Qt::NoModifier,rootTools);QTest::qWait(40);
+    expect(studio.draft()==before&&editor->property("draggedButtonId").toString().isEmpty(),"Escape cancels a drag without a late drop");
+    moveMouse(rootBrush,QPoint(editor->width()/2,100));QTest::mouseRelease(editor,Qt::LeftButton,Qt::NoModifier,QPoint(editor->width()/2,100));QTest::qWait(40);
+    expect(studio.draft()==before,"dropping outside buttons leaves the menu intact");
+    studio.preview()->toggleDock();QTest::qWait(40);
+    const auto dockBrush=wheelPoint("brush"),dockTools=wheelPoint("tools");moveMouse(dockBrush,dockTools);QTest::mouseRelease(editor,Qt::LeftButton,Qt::NoModifier,dockTools);QTest::qWait(40);
+    expect(studio.draft().nodes.at("tools").children[4]=="brush","docked preview also supports dragging into a parent");
+    editor->hide();
 }
 void trayTests(){
     QTemporaryDir temp;StudioController studio(nullptr,temp.path()+"/profile",true);
@@ -346,5 +442,13 @@ void trayTests(){
 int main(int argc,char** argv){
     QApplication app(argc,argv);app.setQuitOnLastWindowClosed(false);app.setOrganizationName("TabletProTests");app.setApplicationName("RadialUpdates");app.setApplicationVersion(TABLETPRO_VERSION);QQuickStyle::setStyle("Basic");
     QTemporaryDir settings;QStandardPaths::setTestModeEnabled(true);QSettings::setDefaultFormat(QSettings::IniFormat);QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,settings.path());
-    try{parseTests();networkTests();trayTests();whatsNewTests();std::cout<<checks<<" tray/update checks passed\n";return 0;}catch(const std::exception& e){std::cerr<<"FAILED: "<<e.what()<<'\n';return 1;}
+    try{
+        if(app.arguments().contains("--drag-ui-only")){
+            qmlRegisterType<RadialSurface>("TabletPro",1,0,"RadialSurface");
+            qmlRegisterUncreatableType<MenuSession>("TabletPro",1,0,"MenuSession","Provided");
+            qmlRegisterUncreatableType<StylusInput>("TabletPro",1,0,"StylusInput","Provided");
+            editorDragUiTests();
+        }else{parseTests();networkTests();trayTests();parentPointerUiTests();editorDragUiTests();whatsNewTests();}
+        std::cout<<checks<<" tray/update checks passed\n";return 0;
+    }catch(const std::exception& e){std::cerr<<"FAILED: "<<e.what()<<'\n';return 1;}
 }

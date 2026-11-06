@@ -86,6 +86,7 @@ int main(int argc,char**argv) {
     auto updateMask=[&] {
         QRegion region;
         for(const auto* name:{"overlayRail","overlayToolbar","overlayMorePanel","overlayResult"}) {
+            if(studio.runtime()->parentMenuOpen() && name!=QString("overlayResult"))continue;
             const auto* item=overlay->findChild<QQuickItem*>(name);
             if(!item||!item->isVisible())continue;
             auto rect=item->mapRectToScene(item->boundingRect());
@@ -101,11 +102,11 @@ int main(int argc,char**argv) {
         // input mask. Otherwise an intermediate frame could frost the monitor.
         if(moving)backdrop.setEnabled(false);
         if(session->transitioning())region+=QRect(0,0,overlay->width(),overlay->height());
-        else if(p<=0){
+        else if(p<=0 && !session->parentMenuOpen()){
             const auto center=session->radialCenter();
             for(const auto& value:settingsSurface&&settingsSurface->isVisible()?settingsSurface->buttons():session->buttons())region+=sector(center,value.toMap()["angle"].toDouble(),41,101,3.141592653589793/6-.02);
         }
-        else if(!surface||!surface->continuousRail())for(const auto& value:session->buttons()){
+        else if(!session->parentMenuOpen() && (!surface||!surface->continuousRail()))for(const auto& value:session->buttons()){
             const auto b=value.toMap();QPainterPath path;
             path.addRoundedRect(QRectF(b["dockX"].toDouble()-25,b["dockY"].toDouble()-25,50,50),12,12);
             region+=QRegion(path.toFillPolygon().toPolygon());
@@ -115,8 +116,13 @@ int main(int argc,char**argv) {
             const auto b=value.toMap();
             region+=sector({b["fromX"].toDouble(),b["fromY"].toDouble()},b["axis"].toDouble(),radial::GestureEngine::ChildInnerRadius-3,radial::GestureEngine::ChildOuterRadius+3,(radial::GestureEngine::ChildHalfAngleDegrees+1)*3.141592653589793/180);
         }
+        if(session->parentMenuOpen()){
+            const auto center=session->parentCenter();QPainterPath hub;hub.addEllipse(center,40,40);
+            region+=QRegion(hub.toFillPolygon().toPolygon());
+            for(const auto& value:session->parentButtons())region+=sector(center,value.toMap()["angle"].toDouble(),41,101,3.141592653589793/6-.02);
+        }
         if(region!=overlay->mask())overlay->setMask(region);
-        backdrop.setDiffusion(session->docked()?44.0/4:202.0/4);
+        backdrop.setDiffusion(session->docked()&&!session->parentMenuOpen()?44.0/4:202.0/4);
         if(!moving&&!recovery.pending())backdrop.setEnabled(studio.backdropEnabled());
     };
     QObject::connect(&recovery,&DisplayRecovery::refreshMask,&app,updateMask);
@@ -180,7 +186,7 @@ int main(int argc,char**argv) {
                 for(const auto& value:studio.preview()->buttons())if(value.toMap()["id"]=="text")text=value.toMap();
                 const double x=text["dockX"].toDouble(),y=text["dockY"].toDouble();
                 studio.selectNode("text");studio.preview()->pointerPressed(91,x,y);studio.preview()->pointerMoved(91,x+42,y);
-                const auto children=studio.preview()->childButtons();
+                const auto children=studio.preview()->parentButtons();
                 if(children.size()!=6){qCritical()<<"Expected six Text children";app.exit(6);return;}
                 const auto bold=children.first().toMap();studio.preview()->pointerMoved(91,bold["cx"].toDouble(),bold["cy"].toDouble());
                 QTimer::singleShot(200,&app,[&,output,saved,docked,bold] {
@@ -191,7 +197,7 @@ int main(int argc,char**argv) {
                     for(const auto& value:studio.preview()->buttons())if(value.toMap()["id"]=="settings")settings=value.toMap();
                     const double sx=settings["dockX"].toDouble(),sy=settings["dockY"].toDouble();
                     studio.preview()->pointerPressed(92,sx,sy);studio.preview()->pointerMoved(92,sx+42,sy);
-                    const bool lastGroupFits=studio.preview()->childButtons().size()==5;
+                    const bool lastGroupFits=studio.preview()->parentButtons().size()==5;
                     studio.preview()->cancel();
                     qInfo().noquote()<<QJsonDocument(QJsonObject{{"dockCompleted",docked},{"sixChildren",true},{"previewCommitted",committed},{"lastDockGroupFits",lastGroupFits}}).toJson(QJsonDocument::Compact);
                     const bool previewPassed=saved&&docked&&committed&&lastGroupFits;
@@ -242,7 +248,7 @@ int main(int argc,char**argv) {
                             for(const auto& value:studio.runtime()->buttons())if(value.toMap()["id"]=="text")text=value.toMap();
                             const double x=text["dockX"].toDouble(),y=text["dockY"].toDouble();
                             studio.runtime()->pointerPressed(94,x,y);studio.runtime()->pointerMoved(94,x+42,y);
-                            const auto children=studio.runtime()->childButtons();
+                            const auto children=studio.runtime()->parentButtons();
                             if(children.size()!=6){app.exit(9);return;}
                             const auto bold=children.first().toMap();
                             studio.runtime()->pointerMoved(94,bold["cx"].toDouble(),bold["cy"].toDouble());

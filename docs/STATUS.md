@@ -1,4 +1,22 @@
-# Current release: 0.3.13
+# Local candidate: 0.3.15
+
+Editor buttons can be dragged from the outline or named child controls onto an existing parent in the outline or preview. Arrange buttons enables direct dragging in either the radial or docked preview; Done arranging restores gesture simulation. Drop feedback shows the target and validation result, and edge scrolling keeps lower list parents reachable. Mouse and touch drags, Escape cancellation, outside drops, edge scrolling, and single-step Undo are exercised through the actual QML.
+
+Reparenting preserves node/action IDs and entire descendant trees, empties only the source slot, and fills the first free destination slot. It does not update the applied runtime until Apply. Validation rejects self/descendant loops, full parents, invalid IDs, ordinary-action destinations, and excessive subtree depth. An emptied source parent remains editable, with guidance before Apply. Save/reload, subtree preservation, Undo/Redo, and rejected moves have controller coverage.
+
+This candidate includes the 0.3.14 parent-menu work below. Neither local candidate has been uploaded or published.
+
+# Parent-menu implementation: 0.3.14
+
+Parents open full circular child menus after a 300 ms hold at the latest pen position, or after sliding 42 logical pixels at the contact position. Existing groups need no profile migration. Nested parents support tap, hold, slide and center Back. Original artwork steps aside while the popup is open; its Glass uses the radial diffusion width. All menu geometry is clamped to the current overlay screen. A missing or expired pen position falls back to the launch contact; cross-monitor popup relocation is not implemented.
+
+The Windows pen-position observer filters pen-promoted mouse messages and maps their native monitor handle to Qt coordinates. Ordinary mouse and touch do not replace the pen location. The popup uses independent pen, touch and mouse handlers, allowing the pen to choose while a launching touch is still held. Cancel, resize, target changes and hide clear pending holds and menus. Child modifier taps arm one stroke even when launched from the dock.
+
+The editor offers Add parent, Add child, Make parent, named child slots, and Back to parent. Converting an action preserves it as the first child. Insertions fill empty slots, occupied slots select existing children, and Undo/Redo and save/load retain the tree. Four parent levels remain the limit.
+
+Verification covers hold timing, slide location, cancellation, independent pen/touch input through the actual QML, nested navigation, child modifiers, native Windows pen-coordinate mapping at the connected display scale, and editor persistence. Physical simultaneous pen/finger behavior in drawing applications and mixed-monitor devices still require acceptance testing. Publication and uploads remain pending Justice or Bassem's approval of the exact new notes.
+
+# Published release: 0.3.13
 
 Docked settings highlights use the control's background insets: 3 logical pixels on either side and 2 above/below each action. This keeps active, hover and pressed fills inside the continuous rail border while preserving the 44-by-44 pointer targets and active-state dots.
 

@@ -23,13 +23,22 @@ QStringList modifiers(const radial::Action& a) {
 MenuSession::MenuSession(bool simulation, WindowPlatform* platform, QObject* parent)
     : QObject(parent), platform_(platform), simulation_(simulation) {
     modifierClock_.start();
+    parentHoldTimer_.setSingleShot(true);parentHoldTimer_.setInterval(ParentHoldMs);parentHoldTimer_.setTimerType(Qt::PreciseTimer);
+    connect(&parentHoldTimer_,&QTimer::timeout,this,[this]{
+        if(!parentPress_)return;
+        if(!simulation_ && platform_ && !platform_->targetUnchanged(gestureTarget_)){cancel();return;}
+        const auto press=*parentPress_;
+        const auto pen=(!simulation_&&platform_)?platform_->penPositionInOverlay():std::optional<QPointF>{QPointF(width_/2,height_/2)};
+        openParent(press.id,pen.value_or(press.point),true,press.pointer);
+        if(!pen){status_="Menu opened here · move your pen near the screen before holding to open at its tip";emit stateChanged();}
+    });
     if(!simulation_ && platform_) connect(platform_,&WindowPlatform::modifiersReleased,this,[this]{
         heldModifiers_.clear();latchedModifiers_.clear();armedModifiers_.clear();modifierPointer_.reset();lastTapKey_.clear();
         emit geometryChanged();emit stateChanged();
     });
     if(!simulation_ && platform_)connect(platform_,&WindowPlatform::strokeModifiersReleased,this,&MenuSession::finishNextStroke);
     connect(&animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) { progress_ = value.toReal(); emit geometryChanged(); });
-    connect(&animation_, &QVariantAnimation::finished, this, [this] { status_ = docked_ ? "Docked · pull a group toward the canvas" : "Floating · pull outward to open a group"; emit stateChanged(); emit cue("snap"); });
+    connect(&animation_, &QVariantAnimation::finished, this, [this] { status_ = "Hold a parent for 300 ms · slide out to open at your finger"; emit stateChanged(); emit cue("snap"); });
     if (!simulation_ && platform_) connect(platform_, &WindowPlatform::targetLost, this, [this] { if (active() || !heldModifiers_.isEmpty()) { cancel(); status_ = "Canceled: the target application changed."; emit stateChanged(); } });
     if (!simulation_ && platform_) connect(platform_, &WindowPlatform::actionDispatchFinished, this, [this](bool success, const QString& error) {
         if (!pendingDispatch_) return;
@@ -127,6 +136,7 @@ void MenuSession::toggleDock() {
 }
 void MenuSession::replayDock() { if (active()) return; animation_.stop(); progress_ = 0; docked_ = false; toggleDock(); }
 void MenuSession::pointerPressed(int pointerId, qreal x, qreal y) {
+    if(parentMenuOpen()){parentPointerPressed(pointerId,x,y);return;}
     if (active() || animation_.state() != QAbstractAnimation::Stopped) return;
     const auto center = radialCenter();
     for (const auto& value : buttons()) {
@@ -150,6 +160,7 @@ void MenuSession::pointerPressed(int pointerId, qreal x, qreal y) {
         if (engine_.begin(profile_, b["id"].toString().toStdString(), {cx,cy}, docked_ ? 0 : angle, pointerId, radial::Point{x,y},
                           radial::Bounds{FanViewportMargin,FanViewportMargin,width_-FanViewportMargin,height_-FanViewportMargin})) {
             previousSelection_.clear(); previousDepth_ = 0; status_ = "Pull outward to open · release a highlighted action"; updateView();
+            if(node.kind==radial::NodeKind::Group){beginParentPress(b["id"].toString(),pointerId,{x,y});status_="Hold 300 ms for the pen tip · slide out to open here";emit stateChanged();}
         }
         return;
     }
@@ -174,14 +185,15 @@ void MenuSession::updateView() {
     emit stateChanged();
 }
 void MenuSession::pointerMoved(int pointerId, qreal x, qreal y) {
-    if(modifierPointer_){
-        if(*modifierPointer_!=pointerId)return;
+    if(!std::isfinite(x)||!std::isfinite(y)){cancel();return;}
+    if(modifierPointer_){moveModifierPointer(pointerId,x,y);return;}
+    if(parentMenuOpen()){parentPointerMoved(pointerId,x,y);return;}
+    if(parentPress_){
+        if(parentPress_->pointer!=pointerId)return;
         if(!simulation_ && platform_ && !platform_->targetUnchanged(gestureTarget_)){cancel();return;}
-        if(!modifierDragged_ && QLineF(modifierStart_,{x,y}).length()>28){
-            modifierDragged_=true;lastTapKey_.clear();
-            status_=modifierKey_+" locked for this contact · lift to release";
-            emit geometryChanged();emit stateChanged();
-        }
+        const auto distance=QLineF(parentPress_->point,{x,y}).length();
+        if(distance>12)parentHoldTimer_.stop();
+        if(distance>=radial::GestureEngine::OpenThreshold){const auto press=*parentPress_;openParent(press.id,{x,y},false,pointerId);}
         return;
     }
     if (!engine_.active()) return;
@@ -193,13 +205,21 @@ void MenuSession::pointerMoved(int pointerId, qreal x, qreal y) {
         beginModifier(node->second,pointerId,{x,y},true);
 }
 void MenuSession::pointerReleased(int pointerId, qreal x, qreal y) {
+    if(ignoredParentPointer_ && *ignoredParentPointer_==pointerId){ignoredParentPointer_.reset();return;}
+    if(parentMenuOpen()){parentPointerReleased(pointerId,x,y);return;}
+    if(parentPress_){
+        if(parentPress_->pointer!=pointerId)return;
+        pointerMoved(pointerId,x,y);
+        if(parentMenuOpen()){parentPointerReleased(pointerId,x,y);return;}
+        parentHoldTimer_.stop();parentPress_.reset();engine_.cancel();status_="Hold a parent for 300 ms, or slide out to open its menu";finish();return;
+    }
     if(modifierPointer_){
         if(*modifierPointer_!=pointerId)return;
         pointerMoved(pointerId,x,y);
         if(!modifierPointer_)return;
         const auto now=modifierClock_.elapsed();
-        const bool tap=!modifierDragged_ && !releasingLatch_ && now-pressedAt_<=(docked_?250:450);
-        if(!docked_ && tap){
+        const bool tap=!modifierDragged_ && !releasingLatch_ && now-pressedAt_<=(modifierFloating_?450:250);
+        if(modifierFloating_ && tap){
             lastTapKey_.clear();
             if(simulation_ || (platform_ && platform_->armNextStroke(modifierKey_))){
                 if(!armedModifiers_.contains(modifierKey_))armedModifiers_.append(modifierKey_);
@@ -225,6 +245,9 @@ void MenuSession::pointerReleased(int pointerId, qreal x, qreal y) {
     if (!viewFits()) { cancel(); status_ = "Canceled: the branch would extend beyond the available space."; emit stateChanged(); return; }
     auto action = engine_.release(pointerId,{x,y});
     if (engine_.active()) return;
+    dispatchAction(action);
+}
+void MenuSession::dispatchAction(const std::optional<radial::Action>& action) {
     if (action && action->kind != radial::ActionKind::None) {
         const auto mods = modifiers(*action);
         QString description = action->kind == radial::ActionKind::Text ? "Insert text: " + QString::fromStdString(action->text).left(60) : (mods.isEmpty()?QString{}:mods.join('+')+'+') + QString::fromStdString(action->key);
@@ -251,6 +274,7 @@ void MenuSession::pointerReleased(int pointerId, qreal x, qreal y) {
     finish();
 }
 void MenuSession::finish() {
+    parentHoldTimer_.stop();parentPress_.reset();parentStack_.clear();parentPointer_.reset();ignoredParentPointer_.reset();parentSelected_.clear();
     if (!simulation_ && platform_) platform_->releaseTarget();
     gestureTarget_ = 0; previousSelection_.clear(); previousDepth_ = 0;
     pendingDescription_.clear();
@@ -271,12 +295,18 @@ bool MenuSession::holdModifier(const QString& key, bool held) {
     return true;
 }
 bool MenuSession::beginModifier(const radial::Node& node, int pointerId, QPointF point, bool fromFan) {
+    modifierFloating_=!docked_||parentMenuOpen();
     modifierKey_=QString::fromStdString(node.action.key);modifierNode_=QString::fromStdString(node.id);
     releasingLatch_=latchedModifiers_.contains(modifierKey_)||armedModifiers_.contains(modifierKey_);
     if(!holdModifier(modifierKey_,!releasingLatch_)){engine_.cancel();finish();return false;}
     modifierPointer_=pointerId;modifierStart_=point;pressedAt_=modifierClock_.elapsed();modifierDragged_=fromFan;
-    status_=modifierKey_+(releasingLatch_?" released":docked_?" held · drag out to lock until lift":" held · tap to use for the next pen stroke");
+    status_=modifierKey_+(releasingLatch_?" released":modifierFloating_?" held · tap to use for the next pen stroke":" held · drag out to lock until lift");
     emit geometryChanged();emit stateChanged();return true;
+}
+void MenuSession::moveModifierPointer(int pointerId,qreal x,qreal y){
+    if(!modifierPointer_||*modifierPointer_!=pointerId)return;
+    if(!simulation_&&platform_&&!platform_->targetUnchanged(gestureTarget_)){cancel();return;}
+    if(!modifierDragged_&&QLineF(modifierStart_,{x,y}).length()>28){modifierDragged_=true;lastTapKey_.clear();status_=modifierKey_+" locked for this contact · lift to release";emit geometryChanged();emit stateChanged();}
 }
 void MenuSession::releaseModifiers() {
     modifierPointer_.reset();lastTapKey_.clear();armedModifiers_.clear();
@@ -294,11 +324,100 @@ void MenuSession::finishNextStroke() {
     emit geometryChanged();emit stateChanged();
 }
 void MenuSession::cancel() {
+    parentHoldTimer_.stop();parentPress_.reset();parentStack_.clear();parentPointer_.reset();ignoredParentPointer_.reset();parentSelected_.clear();
     releaseModifiers();
     engine_.cancel();
     pendingDispatch_ = false;
     if (!simulation_ && platform_) platform_->cancelQueuedAction();
     status_ = "Canceled · no action sent";
     finish();
+}
+QVariantList MenuSession::parentButtons() const {
+    QVariantList result;if(!parentMenuOpen())return result;
+    const auto& group=profile_.nodes.at(parentStack_.last().toStdString());
+    for(int i=0;i<6;++i){
+        if(!group.children[i])continue;const auto& node=profile_.nodes.at(*group.children[i]);const double angle=-Pi/2+i*Pi/3;
+        result.append(QVariantMap{{"id",QString::fromStdString(node.id)},{"label",QString::fromStdString(node.label)},
+            {"icon",QString::fromStdString(node.action.kind==radial::ActionKind::Modifier?node.action.key:node.icon)},
+            {"caption",QString::fromStdString(node.label).left(13)},{"group",node.kind==radial::NodeKind::Group},
+            {"modifierState",modifierState(node)},{"slot",i},{"color",colors[i]},{"angle",angle},
+            {"cx",parentCenter_.x()+70*std::cos(angle)},{"cy",parentCenter_.y()+70*std::sin(angle)}});
+    }
+    return result;
+}
+QString MenuSession::parentLabel() const {return parentMenuOpen()?QString::fromStdString(profile_.nodes.at(parentStack_.last().toStdString()).label):QString{};}
+QString MenuSession::parentHit(QPointF point) const {
+    const auto delta=point-parentCenter_;const double radius=std::hypot(delta.x(),delta.y());
+    if(radius<44 || radius>96)return {};
+    for(const auto& value:parentButtons()){
+        const auto b=value.toMap();if(std::abs(std::remainder(std::atan2(delta.y(),delta.x())-b["angle"].toDouble(),2*Pi))<Pi/6-.035)return b["id"].toString();
+    }
+    return {};
+}
+void MenuSession::beginParentPress(const QString& id,int pointer,QPointF point){parentPress_=ParentPress{id,pointer,point};parentHoldTimer_.start();}
+void MenuSession::openParent(const QString& id,QPointF point,bool hold,int pointer){
+    if(!std::isfinite(point.x())||!std::isfinite(point.y())||width_<208||height_<208){cancel();status_="Not enough room for this radial. Enlarge the preview.";emit stateChanged();return;}
+    const auto node=profile_.nodes.find(id.toStdString());
+    if(node==profile_.nodes.end()||node->second.kind!=radial::NodeKind::Group)return;
+    const bool nested=parentMenuOpen();
+    if(nested && parentStack_.last()!=id && parentStack_.size()>=int(radial::MaximumGroupDepth))return;
+    parentHoldTimer_.stop();parentPress_.reset();engine_.cancel();parentSelected_.clear();
+    parentCenterPressed_=false;
+    if(!nested || parentStack_.last()!=id)parentStack_.append(id);
+    const qreal marginX=std::min(qreal(104),width_/2),marginY=std::min(qreal(104),height_/2);
+    parentCenter_={std::clamp(point.x(),marginX,width_-marginX),std::clamp(point.y(),marginY,height_-marginY)};
+    if(hold){ignoredParentPointer_=pointer;parentPointer_.reset();}
+    else {ignoredParentPointer_.reset();parentPointer_=pointer;}
+    status_="Choose a child · center goes back · Esc closes";emit cue("open");emit stateChanged();
+}
+void MenuSession::parentPointerPressed(int pointer,qreal x,qreal y){
+    if(!std::isfinite(x)||!std::isfinite(y)){cancel();return;}
+    if(!parentMenuOpen() || pendingDispatch_ || parentPointer_ || (ignoredParentPointer_&&*ignoredParentPointer_==pointer))return;
+    if(!simulation_&&platform_&&!platform_->targetUnchanged(gestureTarget_)){cancel();return;}
+    parentPointer_=pointer;parentSelected_=parentHit({x,y});
+    parentCenterPressed_=QLineF(parentCenter_,{x,y}).length()<=40;
+    const auto node=profile_.nodes.find(parentSelected_.toStdString());
+    if(node!=profile_.nodes.end()&&node->second.kind==radial::NodeKind::Group)beginParentPress(parentSelected_,pointer,{x,y});
+    if(node!=profile_.nodes.end()&&node->second.action.kind==radial::ActionKind::Modifier)beginModifier(node->second,pointer,{x,y},false);
+    emit stateChanged();
+}
+void MenuSession::parentPointerMoved(int pointer,qreal x,qreal y){
+    if(!parentPointer_ || *parentPointer_!=pointer)return;
+    if(!std::isfinite(x)||!std::isfinite(y)){cancel();return;}
+    if(modifierPointer_){moveModifierPointer(pointer,x,y);return;}
+    if(!simulation_&&platform_&&!platform_->targetUnchanged(gestureTarget_)){cancel();return;}
+    if(parentPress_){
+        const auto distance=QLineF(parentPress_->point,{x,y}).length();if(distance>12)parentHoldTimer_.stop();
+        if(distance>=radial::GestureEngine::OpenThreshold){const auto press=*parentPress_;openParent(press.id,{x,y},false,pointer);return;}
+    }
+    const auto selected=parentHit({x,y});if(selected!=parentSelected_){parentSelected_=selected;if(!selected.isEmpty())emit cue("tick");emit stateChanged();}
+    const auto node=profile_.nodes.find(selected.toStdString());
+    if(node!=profile_.nodes.end()&&node->second.kind==radial::NodeKind::Group&&!parentPress_)beginParentPress(selected,pointer,{x,y});
+    if(node!=profile_.nodes.end()&&node->second.action.kind==radial::ActionKind::Modifier)beginModifier(node->second,pointer,{x,y},true);
+}
+void MenuSession::parentPointerReleased(int pointer,qreal x,qreal y){
+    if(ignoredParentPointer_ && *ignoredParentPointer_==pointer){ignoredParentPointer_.reset();return;}
+    if(!parentPointer_ || *parentPointer_!=pointer)return;
+    if(!simulation_&&platform_&&!platform_->targetUnchanged(gestureTarget_)){cancel();return;}
+    if(modifierPointer_){parentStack_.clear();pointerReleased(pointer,x,y);return;}
+    const auto id=parentHit({x,y});parentHoldTimer_.stop();parentPress_.reset();parentPointer_.reset();parentSelected_.clear();
+    const auto node=profile_.nodes.find(id.toStdString());
+    if(node!=profile_.nodes.end()){
+        if(node->second.kind==radial::NodeKind::Group){openParent(id,parentCenter_,true,pointer);ignoredParentPointer_.reset();return;}
+        if(node->second.action.kind==radial::ActionKind::Modifier){
+            // A release can carry the first position inside this child when moves are coalesced.
+            if(!beginModifier(node->second,pointer,{x,y},false))return;
+            parentStack_.clear();pointerReleased(pointer,x,y);return;
+        }
+        const auto action=node->second.action;parentStack_.clear();dispatchAction(action);return;
+    }
+    if(QLineF(parentCenter_,{x,y}).length()<=40){if(parentCenterPressed_)parentBack();else emit stateChanged();return;}
+    cancel();
+}
+void MenuSession::parentBack(){
+    if(!parentMenuOpen())return;
+    parentHoldTimer_.stop();parentPress_.reset();parentPointer_.reset();ignoredParentPointer_.reset();parentSelected_.clear();
+    if(parentStack_.size()>1){parentStack_.removeLast();emit cue("back");emit stateChanged();}
+    else cancel();
 }
 }

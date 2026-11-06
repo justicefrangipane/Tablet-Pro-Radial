@@ -6,6 +6,7 @@
 #include <QVariantAnimation>
 #include <QElapsedTimer>
 #include <QStringList>
+#include <QTimer>
 #include <optional>
 
 namespace tabletpro {
@@ -23,6 +24,11 @@ class MenuSession : public QObject {
     Q_PROPERTY(QString status READ status NOTIFY stateChanged)
     Q_PROPERTY(QStringList heldModifiers READ heldModifiers NOTIFY stateChanged)
     Q_PROPERTY(int durationMs READ durationMs WRITE setDurationMs NOTIFY preferencesChanged)
+    Q_PROPERTY(bool parentMenuOpen READ parentMenuOpen NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList parentButtons READ parentButtons NOTIFY stateChanged)
+    Q_PROPERTY(QPointF parentCenter READ parentCenter NOTIFY stateChanged)
+    Q_PROPERTY(QString parentLabel READ parentLabel NOTIFY stateChanged)
+    Q_PROPERTY(QString parentSelectedId READ parentSelectedId NOTIFY stateChanged)
 public:
     explicit MenuSession(bool simulation, WindowPlatform* platform, QObject* parent = nullptr);
     void setProfile(const radial::Profile& profile);
@@ -34,7 +40,13 @@ public:
     qreal dockProgress() const { return progress_; }
     bool docked() const { return docked_; }
     QPointF radialCenter() const;
-    bool active() const { return engine_.active() || pendingDispatch_ || modifierPointer_.has_value(); }
+    bool active() const { return engine_.active() || parentMenuOpen() || pendingDispatch_ || modifierPointer_.has_value(); }
+    bool parentMenuOpen() const {return !parentStack_.isEmpty();}
+    QVariantList parentButtons() const;
+    QPointF parentCenter() const {return parentCenter_;}
+    QString parentLabel() const;
+    QString parentSelectedId() const {return parentSelected_;}
+    static constexpr int ParentHoldMs=300;
     QStringList heldModifiers() const { return heldModifiers_; }
     bool transitioning() const { return animation_.state() == QAbstractAnimation::Running; }
     QString status() const { return status_; }
@@ -50,6 +62,10 @@ public:
     Q_INVOKABLE void pointerReleased(int pointerId, qreal x, qreal y);
     Q_INVOKABLE void cancel();
     Q_INVOKABLE void releaseModifiers();
+    Q_INVOKABLE void parentPointerPressed(int pointerId,qreal x,qreal y);
+    Q_INVOKABLE void parentPointerMoved(int pointerId,qreal x,qreal y);
+    Q_INVOKABLE void parentPointerReleased(int pointerId,qreal x,qreal y);
+    Q_INVOKABLE void parentBack();
     void finishNextStroke();
 signals:
     void geometryChanged();
@@ -60,6 +76,14 @@ signals:
 private:
     radial::Profile profile_;
     std::optional<radial::Profile> pending_;
+    struct ParentPress {QString id;int pointer;QPointF point;};
+    std::optional<ParentPress> parentPress_;
+    QTimer parentHoldTimer_;
+    QStringList parentStack_;
+    QPointF parentCenter_;
+    QString parentSelected_;
+    std::optional<int> parentPointer_,ignoredParentPointer_;
+    bool parentCenterPressed_=false;
     radial::GestureEngine engine_;
     WindowPlatform* platform_;
     QVariantAnimation animation_;
@@ -68,7 +92,7 @@ private:
     qreal width_ = 680, height_ = 540, progress_ = 0;
     std::optional<QPointF> radialAnchor_;
     bool draggedAnchor_ = false;
-    QString status_ = "Press a tool. Pull a group outward, steer, then release.";
+    QString status_ = "Hold a parent for 300 ms · slide out to open at your finger";
     quintptr invocationTarget_ = 0, gestureTarget_ = 0;
     QString previousSelection_;
     bool pendingDispatch_ = false;
@@ -78,7 +102,8 @@ private:
     QPointF modifierStart_;
     QElapsedTimer modifierClock_;
     qint64 pressedAt_ = 0, lastTapAt_ = -1000;
-    bool modifierDragged_ = false, releasingLatch_ = false;
+    bool modifierDragged_ = false, releasingLatch_ = false, modifierFloating_ = false;
+    void moveModifierPointer(int pointerId,qreal x,qreal y);
     bool beginModifier(const radial::Node& node, int pointerId, QPointF point, bool fromFan = false);
     bool holdModifier(const QString& key, bool held);
     QString modifierState(const radial::Node& node) const;
@@ -86,6 +111,10 @@ private:
     std::size_t previousDepth_ = 0;
     void updateView();
     void finish();
+    void beginParentPress(const QString& id,int pointer,QPointF point);
+    void openParent(const QString& id,QPointF point,bool hold,int pointer);
+    QString parentHit(QPointF point) const;
+    void dispatchAction(const std::optional<radial::Action>& action);
     bool viewFits() const;
     QPointF boundedRadialCenter(QPointF center, bool leaveFanRoom = true) const;
 };

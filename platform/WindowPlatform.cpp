@@ -267,6 +267,7 @@ bool WindowPlatform::configureOverlay(QQuickWindow* window)
         disconnect(m_overlay, nullptr, this, nullptr);
     const bool newlyConfigured = m_overlay != window;
     m_overlay = window;
+    m_penPosition.start();
     m_overlayHandle = 0;
     window->setFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint
                      | Qt::WindowDoesNotAcceptFocus);
@@ -402,6 +403,11 @@ bool WindowPlatform::armNextStroke(const QString& key) {
     if(!m_penStroke.start())return fail("Pen contact monitoring could not start. The modifier was released; tap again to retry.");
     if(!m_strokeModifiers.contains(key))m_strokeModifiers.append(key);
     return true;
+}
+std::optional<QPointF> WindowPlatform::penPositionInOverlay() const {
+    const auto point=m_penPosition.position();
+    if(!point || !m_overlay)return std::nullopt;
+    return *point-QPointF(m_overlay->position());
 }
 
 bool WindowPlatform::shortcutSupported(const QString& key, const QStringList& modifiers) const

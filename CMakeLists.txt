@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(TabletProRadial VERSION 0.3.13 LANGUAGES CXX)
+project(TabletProRadial VERSION 0.3.15 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -21,7 +21,7 @@ if(BUILD_TESTING)
 endif()
 
 if(TABLETPRO_BUILD_DESKTOP)
-  find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Network Qml Quick QuickControls2 Multimedia ShaderTools)
+  find_package(Qt6 6.7 REQUIRED COMPONENTS Core Gui Widgets Network Qml Quick QuickControls2 Multimedia ShaderTools)
   set(CMAKE_AUTOMOC ON)
   add_library(radial_studio
     app/ProfileCodec.cpp app/ProfileCodec.h
@@ -31,6 +31,7 @@ if(TABLETPRO_BUILD_DESKTOP)
     app/DisplayRecovery.cpp app/DisplayRecovery.h
     platform/WindowPlatform.cpp platform/WindowPlatform.h
     platform/PenStrokeMonitor.cpp platform/PenStrokeMonitor.h
+    platform/PenPositionTracker.cpp platform/PenPositionTracker.h
     platform/StylusInput.cpp platform/StylusInput.h
     platform/BackdropEffect.cpp platform/BackdropEffect.h
     ui/RadialSurface.cpp ui/RadialSurface.h)
@@ -61,7 +62,7 @@ if(TABLETPRO_BUILD_DESKTOP)
   target_link_libraries(radial_desktop PUBLIC radial_studio Qt6::Widgets Qt6::Network)
   target_link_libraries(tabletpro_radial PRIVATE radial_desktop)
   target_compile_definitions(tabletpro_radial PRIVATE TABLETPRO_VERSION="${PROJECT_VERSION}")
-  qt_add_resources(tabletpro_radial qml_source PREFIX "/" FILES qml/Main.qml qml/Overlay.qml qml/HubButton.qml qml/HoverTip.qml qml/BloomLayer.qml)
+  qt_add_resources(tabletpro_radial qml_source PREFIX "/" FILES qml/Main.qml qml/Overlay.qml qml/HubButton.qml qml/HoverTip.qml qml/ParentMenu.qml qml/BloomLayer.qml)
   qt_add_shaders(tabletpro_radial bloom_shader PREFIX "/" FILES shaders/gentle-bloom.frag)
   set_target_properties(tabletpro_radial PROPERTIES WIN32_EXECUTABLE TRUE MACOSX_BUNDLE TRUE)
   if(WIN32)
@@ -86,7 +87,7 @@ if(TABLETPRO_BUILD_DESKTOP)
     add_executable(radial_update_tests tests/update_tests.cpp)
     target_link_libraries(radial_update_tests PRIVATE radial_desktop Qt6::Test)
     target_compile_definitions(radial_update_tests PRIVATE TABLETPRO_VERSION="${PROJECT_VERSION}")
-    qt_add_resources(radial_update_tests test_qml PREFIX "/" FILES qml/Main.qml qml/Overlay.qml qml/HubButton.qml qml/HoverTip.qml qml/BloomLayer.qml)
+    qt_add_resources(radial_update_tests test_qml PREFIX "/" FILES qml/Main.qml qml/Overlay.qml qml/HubButton.qml qml/HoverTip.qml qml/ParentMenu.qml qml/BloomLayer.qml)
     qt_add_shaders(radial_update_tests test_bloom_shader PREFIX "/" FILES shaders/gentle-bloom.frag)
     add_test(NAME tray_and_updates COMMAND radial_update_tests)
     set_tests_properties(tray_and_updates PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
@@ -96,7 +97,7 @@ if(TABLETPRO_BUILD_DESKTOP)
     if(WIN32)
       add_executable(radial_settings_tests tests/settings_bloom_tests.cpp)
       target_link_libraries(radial_settings_tests PRIVATE radial_studio Qt6::Widgets)
-      qt_add_resources(radial_settings_tests settings_test_qml PREFIX "/" FILES qml/Main.qml qml/Overlay.qml qml/HubButton.qml qml/HoverTip.qml qml/BloomLayer.qml)
+      qt_add_resources(radial_settings_tests settings_test_qml PREFIX "/" FILES qml/Main.qml qml/Overlay.qml qml/HubButton.qml qml/HoverTip.qml qml/ParentMenu.qml qml/BloomLayer.qml)
       qt_add_shaders(radial_settings_tests settings_test_shader PREFIX "/" FILES shaders/gentle-bloom.frag)
       add_test(NAME settings_bloom_rendered COMMAND radial_settings_tests)
       set_tests_properties(settings_bloom_rendered PROPERTIES RUN_SERIAL TRUE TIMEOUT 45)

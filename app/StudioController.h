@@ -17,6 +17,12 @@ class StudioController : public QObject {
     Q_PROPERTY(QString selectedLabel READ selectedLabel NOTIFY changed)
     Q_PROPERTY(QString selectedIcon READ selectedIcon NOTIFY changed)
     Q_PROPERTY(QString selectedKind READ selectedKind NOTIFY changed)
+    Q_PROPERTY(QString selectedParentId READ selectedParentId NOTIFY changed)
+    Q_PROPERTY(QString insertionLabel READ insertionLabel NOTIFY changed)
+    Q_PROPERTY(QVariantList childSlots READ childSlots NOTIFY changed)
+    Q_PROPERTY(bool canAddButton READ canAddButton NOTIFY changed)
+    Q_PROPERTY(bool canAddParent READ canAddParent NOTIFY changed)
+    Q_PROPERTY(bool canMakeParent READ canMakeParent NOTIFY changed)
     Q_PROPERTY(QString selectedKey READ selectedKey NOTIFY changed)
     Q_PROPERTY(QString selectedText READ selectedText NOTIFY changed)
     Q_PROPERTY(QStringList selectedModifiers READ selectedModifiers NOTIFY changed)
@@ -41,6 +47,12 @@ public:
     QString selectedLabel() const;
     QString selectedIcon() const;
     QString selectedKind() const;
+    QString selectedParentId() const;
+    QString insertionLabel() const;
+    QVariantList childSlots() const;
+    bool canAddButton() const;
+    bool canAddParent() const;
+    bool canMakeParent() const;
     QString selectedKey() const;
     QString selectedText() const;
     QStringList selectedModifiers() const;
@@ -73,6 +85,10 @@ public:
     Q_INVOKABLE void editButton(const QString& id);
     Q_INVOKABLE void useDefaultMenu();
     Q_INVOKABLE void addChild(int slot,bool group);
+    Q_INVOKABLE void addNextButton(bool parent);
+    Q_INVOKABLE void makeParent();
+    Q_INVOKABLE QString reparentProblem(const QString& buttonId,const QString& parentId) const;
+    Q_INVOKABLE bool reparentButton(const QString& buttonId,const QString& parentId);
     Q_INVOKABLE void removeSelected();
     Q_INVOKABLE void moveSelected(int delta);
     Q_INVOKABLE void undo();
@@ -107,6 +123,10 @@ private:
     bool soundEnabled_=false,reducedMotion_=false,backdropEnabled_=true;
     const radial::Node* selectedNode() const;
     radial::Node* selectedNode();
+    std::string parentOf(const std::string& id) const;
+    std::string insertionParent() const;
+    int groupDepth(const std::string& id) const;
+    const radial::SlotArray& insertionSlots() const;
     void edit(const std::function<void()>& mutation);
     void refresh();
     void eraseBranch(const std::string& id);

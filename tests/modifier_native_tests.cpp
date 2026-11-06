@@ -4,6 +4,9 @@
 #include <QProcess>
 #include <QEventLoop>
 #include <QTimer>
+#include <QCursor>
+#include <QLineF>
+#include <QScreen>
 #include <iostream>
 #include <stdexcept>
 #ifndef NOMINMAX
@@ -104,6 +107,7 @@ int main(int argc,char** argv){
         RECT client{};GetClientRect(window,&client);
         POINT point{(client.right-client.left)/2,(client.bottom-client.top)/2};ClientToScreen(window,&point);
         check(SetCursorPos(point.x,point.y),"move pointer inside owned receiver");settle();
+        tabletpro::PenPositionTracker penPosition;check(penPosition.start(),"independent pen-position observer starts");
         const auto pen=[&](bool down,ULONG_PTR signature){
             if(GetForegroundWindow()!=window||WindowFromPoint(point)!=window)std::cerr<<"receiver="<<window<<" foreground="<<GetForegroundWindow()<<" hit="<<WindowFromPoint(point)<<" at "<<point.x<<","<<point.y<<'\n';
             check(GetForegroundWindow()==window&&WindowFromPoint(point)==window,"pen test stays inside owned receiver");
@@ -111,10 +115,19 @@ int main(int argc,char** argv){
             check(SendInput(1,&input,sizeof(input))==1,"send tagged pointer to owned receiver");settle();
         };
         pen(false,0xff515701);
+        if(!penPosition.position()||QLineF(*penPosition.position(),QCursor::pos()).length()>=2){
+            const auto observed=penPosition.position().value_or(QPointF(-999,-999));
+            std::cerr<<"pen observed="<<observed.x()<<","<<observed.y()<<" cursor="<<QCursor::pos().x()<<","<<QCursor::pos().y()<<" native="<<point.x<<","<<point.y<<'\n';
+            for(auto* screen:QGuiApplication::screens())std::cerr<<"screen="<<screen->name().toStdString()<<" dpr="<<screen->devicePixelRatio()<<" origin="<<screen->geometry().x()<<","<<screen->geometry().y()<<'\n';
+        }
+        check(penPosition.position()&&QLineF(*penPosition.position(),QCursor::pos()).length()<2,"native pen location maps correctly to Qt coordinates at this monitor scale");
         check(platform.heldModifiers().size()==2,"initial selection pen up does not release armed modifiers");
+        penPosition.observe({-123,-456});
         pen(true,0);pen(false,0);pen(true,0xff515781);pen(false,0xff515781);
+        check(penPosition.position()==std::optional<QPointF>{{-123,-456}},"native mouse and touch cannot overwrite the pen location");
         check(platform.heldModifiers().size()==2,"ordinary mouse and touch promotion do not consume pen stroke");
         pen(true,0xff515701);
+        check(penPosition.position()&&QLineF(*penPosition.position(),QCursor::pos()).length()<2,"next native pen message refreshes its independent location");
         check((GetAsyncKeyState(VK_CONTROL)&0x8000)&&(GetAsyncKeyState(VK_SHIFT)&0x8000),"native modifiers remain held throughout pen contact");
         pen(false,0xff515701);
         check(platform.heldModifiers().isEmpty()&&!(GetAsyncKeyState(VK_CONTROL)&0x8000)&&!(GetAsyncKeyState(VK_SHIFT)&0x8000),"native pen up releases every armed modifier");

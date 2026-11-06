@@ -14,7 +14,7 @@ Window {
     property bool menuOpen: false
     readonly property bool morphing: studio.runtime.transitioning
     onMorphingChanged: { if(morphing){menuOpen=false;settingsBloomAnimation.stop();bloomProgress=0;} }
-    readonly property bool childrenVisible: surface.visualBounds.width > 0
+    readonly property bool childrenVisible: surface.visualBounds.width > 0 || studio.runtime.parentMenuOpen
     property string resultMessage: ""
     readonly property bool railMode: studio.runtime.docked && !morphing
     readonly property real railX: 13
@@ -80,7 +80,7 @@ Window {
         if (visible) studio.runtime.setViewport(surface.width,surface.height);
         else studio.runtime.cancel();
     }
-    Shortcut { sequence: "Escape"; onActivated: { overlay.menuOpen=false;overlay.editingButtons=false; studio.runtime.cancel(); } }
+    Shortcut { sequence: "Escape"; enabled: overlay.visible; onActivated: { overlay.menuOpen=false;overlay.editingButtons=false; studio.runtime.cancel(); } }
     Connections {
         target: studio.runtime
         function onActionReported(description) { overlay.resultMessage=description; resultTimer.restart(); }
@@ -102,6 +102,7 @@ Window {
         x: overlay.railX; y: overlay.railY
         width: 44; height: 347
         visible: overlay.railMode
+        opacity: studio.runtime.parentMenuOpen ? 0 : 1
         Rectangle {
         anchors.fill: parent; anchors.margins: 1; radius: 13
         gradient: Gradient {
@@ -135,6 +136,7 @@ Window {
         continuousRail: true
         bronzeTheme: false
         visible: overlay.bloomProgress < 1
+        opacity: studio.runtime.parentMenuOpen ? 0 : 1
         enabled: overlay.toolsReady
         onWidthChanged: studio.runtime.setViewport(width,height)
         onHeightChanged: studio.runtime.setViewport(width,height)
@@ -325,6 +327,13 @@ Window {
         reduceMotion: studio.reducedMotion
         visible: railHousing.visible && !studio.runtime.active && !overlay.childrenVisible
         onClicked: {if(overlay.editingButtons)overlay.editingButtons=false;else overlay.menuOpen=!overlay.menuOpen;}
+    }
+    ParentMenu {
+        objectName: "parentMenu"
+        anchors.fill: parent
+        session: studio.runtime
+        glassEnabled: studio.backdropEnabled
+        reducedMotion: studio.reducedMotion
     }
     Rectangle {
         id: result

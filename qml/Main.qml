@@ -31,6 +31,99 @@ ApplicationWindow {
     property var kindNames: ["group", "shortcut", "text", "empty", "modifier"]
     property var modifierNames: ["Ctrl", "Alt", "Shift", "Meta"]
     property bool quitAfterClose: false
+    property bool arrangeButtons: false
+    property string draggedButtonId: ""
+    property string draggedButtonLabel: ""
+    property string dropParentId: ""
+    property string dropParentLabel: ""
+    property string dropProblem: ""
+    property point buttonDragPosition: Qt.point(0,0)
+    onArrangeButtonsChanged: { cancelButtonDrag(); studio.preview.cancel(); }
+    onActiveChanged: if(!active)cancelButtonDrag()
+
+    function previewIdAt(point) {
+        const at=previewSurface.mapFromItem(editor.contentItem,point.x,point.y)
+        if(at.x<0 || at.y<0 || at.x>previewSurface.width || at.y>previewSurface.height)return ""
+        return previewSurface.hitRoot(at.x,at.y)
+    }
+    function outlineIdAt(point) {
+        const at=outlineList.mapFromItem(editor.contentItem,point.x,point.y)
+        if(at.x<0 || at.y<0 || at.x>=outlineList.width || at.y>=outlineList.height)return ""
+        const row=outlineList.itemAt(at.x+outlineList.contentX,at.y+outlineList.contentY)
+        return row ? row.modelData.id : ""
+    }
+    function moveButtonDrag(point) {
+        if(!draggedButtonId.length)return
+        buttonDragPosition=point
+        const at=outlineList.mapFromItem(editor.contentItem,point.x,point.y)
+        let id=""
+        if(at.x>=0 && at.y>=0 && at.x<outlineList.width && at.y<outlineList.height){
+            id=outlineIdAt(point)
+        }else if(!studio.preview.parentMenuOpen && !studio.preview.transitioning)id=previewIdAt(point)
+        dropParentId=id
+        dropParentLabel=""
+        for(const node of studio.outline)if(node.id===id){dropParentLabel=node.label;break}
+        dropProblem=studio.reparentProblem(draggedButtonId,id)
+    }
+    function beginButtonDrag(id,point) {
+        if(!id.length || draggedButtonId.length)return false
+        studio.preview.cancel()
+        draggedButtonId=id
+        for(const node of studio.outline)if(node.id===id){draggedButtonLabel=node.label;break}
+        moveButtonDrag(point)
+        return true
+    }
+    function cancelButtonDrag() { draggedButtonId="";dropParentId="";dropParentLabel="";dropProblem="" }
+    function finishButtonDrag() {
+        const source=draggedButtonId, destination=dropParentId
+        cancelButtonDrag()
+        if(source.length && destination.length)Qt.callLater(function(){studio.reparentButton(source,destination)})
+    }
+    component ButtonMove: DragHandler {
+        property string buttonId: ""
+        property bool ownsMove: false
+        target: null
+        acceptedButtons: Qt.LeftButton
+        dragThreshold: 8
+        onActiveChanged: if(active)ownsMove=editor.beginButtonDrag(buttonId,centroid.scenePosition)
+        onCentroidChanged: if(active && ownsMove)editor.moveButtonDrag(centroid.scenePosition)
+        onGrabChanged: (transition,eventPoint) => {
+            if(!ownsMove)return
+            if(transition===PointerDevice.UngrabExclusive){
+                ownsMove=false
+                editor.moveButtonDrag(eventPoint.scenePosition)
+                editor.finishButtonDrag()
+            }else if(transition===PointerDevice.CancelGrabExclusive){ownsMove=false;editor.cancelButtonDrag()}
+        }
+        Component.onDestruction: if(ownsMove)editor.cancelButtonDrag()
+    }
+    Timer {
+        interval: 32; repeat: true; running: editor.draggedButtonId.length>0
+        onTriggered: {
+            const at=outlineList.mapFromItem(editor.contentItem,editor.buttonDragPosition.x,editor.buttonDragPosition.y)
+            if(at.x<0 || at.x>outlineList.width || at.y<0 || at.y>outlineList.height)return
+            const step=at.y<28?-9:at.y>outlineList.height-28?9:0
+            if(step){
+                outlineList.contentY=Math.max(outlineList.originY,Math.min(outlineList.originY+Math.max(0,outlineList.contentHeight-outlineList.height),outlineList.contentY+step))
+                editor.moveButtonDrag(editor.buttonDragPosition)
+            }
+        }
+    }
+    Rectangle {
+        objectName: "buttonDragFeedback"
+        parent: editor.contentItem; z: 1000
+        visible: editor.draggedButtonId.length>0
+        x: Math.max(4,Math.min(editor.contentItem.width-width-4,editor.buttonDragPosition.x+18))
+        y: Math.max(4,Math.min(editor.contentItem.height-height-4,editor.buttonDragPosition.y-70))
+        width: 250; height: 62; radius: 10
+        color: editor.dropParentId.length && !editor.dropProblem.length ? "#254b43" : "#262d3b"
+        border.color: editor.dropParentId.length && !editor.dropProblem.length ? "#8cd5b7" : "#71859f"
+        Column {
+            anchors.fill: parent; anchors.margins: 9; spacing: 3
+            Text { width: parent.width; text: editor.draggedButtonLabel; color: "#eef4ff"; font.bold: true; elide: Text.ElideRight }
+            Text { width: parent.width; text: editor.dropParentId.length && !editor.dropProblem.length ? "Move into "+editor.dropParentLabel : editor.dropProblem; color: "#c1cfde"; font.pixelSize: 10; wrapMode: Text.WordWrap }
+        }
+    }
 
     onClosing: close => {
         if (studio.dirty) {
@@ -92,6 +185,7 @@ ApplicationWindow {
             font: control.font
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
             color: !control.enabled ? "#4d5869" : control.primary ? "#0e1b2a" : control.destructive ? "#e9a1a5" : "#d5dfed"
         }
         background: Rectangle {
@@ -235,7 +329,9 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.Redo]; enabled: studio.canRedo; onActivated: studio.redo() }
     Shortcut {
         sequence: "Escape"
+        enabled: editor.visible
         onActivated: {
+            editor.cancelButtonDrag();
             studio.preview.cancel();
             studio.runtime.cancel();
         }
@@ -468,7 +564,7 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
                         Rectangle { Layout.preferredWidth: 5; Layout.preferredHeight: 5; radius: 3; color: studio.dirty ? "#d8b57a" : "#75b59d" }
                     }
-                    Label { Layout.fillWidth: true; text: "A place for every gesture."; color: "#8a99ad"; font.pixelSize: 11; wrapMode: Text.WordWrap }
+                    Label { Layout.fillWidth: true; text: "Drag a button onto a parent to make it a child."; color: "#8a99ad"; font.pixelSize: 11; wrapMode: Text.WordWrap }
                     StudioButton {
                         id: rootMenuButton
                         Layout.fillWidth: true
@@ -483,16 +579,20 @@ ApplicationWindow {
                     }
                     ListView {
                         id: outlineList
+                        objectName: "outlineList"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         model: studio.outline
                         spacing: 4
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
+                        interactive: editor.draggedButtonId.length===0
+                        ButtonMove { buttonId: editor.outlineIdAt(centroid.scenePressPosition) }
                         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
                         delegate: ItemDelegate {
                             id: nodeDelegate
                             required property var modelData
+                            objectName: "outline-" + modelData.id
                             width: outlineList.width
                             height: 42
                             leftPadding: 10 + Math.min(3, modelData.depth) * 12
@@ -502,9 +602,10 @@ ApplicationWindow {
                             onClicked: studio.selectNode(modelData.id)
                             background: Rectangle {
                                 radius: 7
-                                color: studio.selectedId === nodeDelegate.modelData.id ? "#263b53" : nodeDelegate.hovered ? "#202a38" : "transparent"
-                                border.width: studio.selectedId === nodeDelegate.modelData.id ? 1 : 0
-                                border.color: "#3c5673"
+                                readonly property bool dropTarget: editor.draggedButtonId.length>0 && editor.dropParentId===nodeDelegate.modelData.id
+                                color: dropTarget ? (editor.dropProblem.length ? "#503038" : "#254b43") : studio.selectedId === nodeDelegate.modelData.id ? "#263b53" : nodeDelegate.hovered ? "#202a38" : "transparent"
+                                border.width: dropTarget || studio.selectedId === nodeDelegate.modelData.id ? 1 : 0
+                                border.color: dropTarget ? (editor.dropProblem.length ? "#c28d95" : "#8cd5b7") : "#3c5673"
                             }
                             contentItem: RowLayout {
                                 spacing: 8
@@ -516,28 +617,26 @@ ApplicationWindow {
                     }
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#293241" }
                     StudioButton { Layout.fillWidth: true; text: "Use new default menu"; hint: "Load Brush, Eraser, Alt, Ctrl, Shift and Tools as a draft. Undo restores your menu."; onClicked: studio.useDefaultMenu() }
-                    SectionLabel { text: studio.selectedKind === "group" ? "ADD TO SELECTED GROUP" : "ADD TO ROOT MENU"; font.pixelSize: 9; font.letterSpacing: 1 }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Label { text: "New item"; color: "#8f9eb2"; font.pixelSize: 11 }
-                        Item { Layout.fillWidth: true }
-                        StudioSwitch { id: addGroupSwitch; text: "Group"; ToolTip.visible: hovered; ToolTip.text: "Create a group that can contain six more buttons" }
-                    }
+                    SectionLabel { text: "ADD TO " + studio.insertionLabel.toUpperCase(); Layout.fillWidth: true; elide: Text.ElideRight; font.pixelSize: 9; font.letterSpacing: 1 }
+                    StudioButton { objectName: "addChildButton"; Layout.fillWidth: true; text: studio.selectedKind === "group" || studio.selectedParentId.length ? "+ Add child" : "+ Add button"; enabled: studio.canAddButton; onClicked: studio.addNextButton(false) }
+                    StudioButton { objectName: "addParentButton"; Layout.fillWidth: true; text: "+ Add parent"; enabled: studio.canAddParent; hint: "Create a button that opens its own radial menu"; onClicked: studio.addNextButton(true) }
+                    StudioButton { objectName: "makeParentButton"; Layout.fillWidth: true; visible: studio.canMakeParent; text: "Make parent"; hint: "Keep this action as the first child of a new parent menu"; onClicked: studio.makeParent() }
+                    Label { Layout.fillWidth: true; visible: !studio.canAddButton; text: "All six slots are filled. Select an action and choose Make parent to add children."; color: "#8a99ad"; font.pixelSize: 10; wrapMode: Text.WordWrap }
                     GridLayout {
                         Layout.fillWidth: true
                         columns: 3
                         rowSpacing: 6
                         columnSpacing: 6
                         Repeater {
-                            model: 6
+                            model: studio.childSlots
                             StudioButton {
-                                required property int index
+                                required property var modelData
                                 Layout.fillWidth: true
                                 implicitWidth: 40
-                                text: "+ " + (index + 1)
-                                hint: "Add " + (addGroupSwitch.checked ? "group" : "action") + " to " + (studio.selectedKind === "group" ? studio.selectedLabel : "root menu") + " in slot " + (index + 1)
+                                text: (modelData.empty ? "+ " : "") + (modelData.slot + 1)
+                                hint: modelData.empty ? "Add a child in slot " + (modelData.slot + 1) : "Edit " + modelData.label
                                 Accessible.name: hint
-                                onClicked: studio.addChild(index, addGroupSwitch.checked)
+                                onClicked: modelData.empty ? studio.addChild(modelData.slot,false) : studio.selectNode(modelData.id)
                             }
                         }
                     }
@@ -600,8 +699,10 @@ ApplicationWindow {
                             buttons: studio.preview.buttons
                             childButtons: studio.preview.childButtons
                             dockProgress: studio.preview.dockProgress
-                            selectedId: studio.preview.selectedId
+                            selectedId: editor.draggedButtonId.length && !editor.dropProblem.length ? editor.dropParentId : studio.preview.selectedId
+                            enabled: !editor.arrangeButtons
                             reducedMotion: studio.reducedMotion
+                            opacity: studio.preview.parentMenuOpen ? 0 : 1
                             onWidthChanged: studio.preview.setViewport(width, height)
                             onHeightChanged: studio.preview.setViewport(width, height)
                             Component.onCompleted: studio.preview.setViewport(width, height)
@@ -610,6 +711,19 @@ ApplicationWindow {
                             onMoved: (pointerId, x, y) => studio.preview.pointerMoved(pointerId, x, y)
                             onReleased: (pointerId, x, y) => studio.preview.pointerReleased(pointerId, x, y)
                             onCanceled: studio.preview.cancel()
+                        }
+                        ParentMenu {
+                            x: previewSurface.x; y: previewSurface.y
+                            width: previewSurface.width; height: previewSurface.height
+                            transformOrigin: Item.TopLeft; scale: previewSurface.scale
+                            session: studio.preview; reducedMotion: studio.reducedMotion
+                        }
+                        Item {
+                            anchors.fill: parent
+                            visible: editor.arrangeButtons
+                            enabled: !studio.preview.transitioning
+                            ButtonMove { buttonId: editor.previewIdAt(centroid.scenePressPosition) }
+                            TapHandler { onTapped: {const id=editor.previewIdAt(point.scenePosition);if(id.length)studio.selectNode(id)} }
                         }
                         Rectangle {
                             anchors.top: parent.top
@@ -625,6 +739,7 @@ ApplicationWindow {
                     }
                     RowLayout {
                         Layout.fillWidth: true
+                        StudioButton { objectName: "arrangeButtonsButton"; text: editor.arrangeButtons ? "Done arranging" : "Arrange buttons"; primary: editor.arrangeButtons; onClicked: editor.arrangeButtons=!editor.arrangeButtons }
                         StudioButton {
                             text: studio.preview.docked ? "Undock menu" : "Dock to rail"
                             hint: "Preview the voxel transition"
@@ -641,7 +756,7 @@ ApplicationWindow {
                     }
                     Label {
                         Layout.fillWidth: true
-                        text: "Press and drag outward to unfold a group. Release on an action; return to the center to cancel."
+                        text: editor.arrangeButtons ? "Drag a button onto a parent in the preview or the menu list. Green means it can move. Undo restores the previous layout." : "Hold a parent for 300 ms to open its radial. Slide out to open at your finger. Use Arrange buttons to move buttons into parents."
                         color: "#7d90a7"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -687,18 +802,37 @@ ApplicationWindow {
                             FieldLabel { text: "Behavior"; Layout.topMargin: 7 }
                             StudioCombo {
                                 Layout.fillWidth: true
-                                model: ["Nested group", "Keyboard shortcut", "Type text", "Empty slot", "Modifier key"]
+                                model: ["Parent · opens radial", "Keyboard shortcut", "Type text", "Empty slot", "Modifier key"]
                                 currentIndex: Math.max(0, editor.kindNames.indexOf(studio.selectedKind))
                                 onActivated: studio.setKind(editor.kindNames[currentIndex])
                             }
                             Label {
                                 Layout.fillWidth: true
                                 visible: studio.selectedKind === "group"
-                                text: "Drag outward to unfold this group. Add children with the six slot controls on the left."
+                                text: "Hold for 300 ms to open at the pen tip. Slide out to open at your finger. Choose a child below to edit it."
                                 color: "#8ba1bb"
                                 font.pixelSize: 11
                                 wrapMode: Text.WordWrap
                                 lineHeight: 1.2
+                            }
+                            StudioButton { Layout.fillWidth: true; visible: studio.selectedParentId.length>0; text: "← Back to parent"; onClicked: studio.selectNode(studio.selectedParentId) }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                visible: studio.selectedKind === "group"
+                                spacing: 5
+                                FieldLabel { text: "Child buttons" }
+                                Repeater {
+                                    model: studio.selectedKind === "group" ? studio.childSlots : []
+                                    StudioButton {
+                                        id: childSlotButton
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        text: (modelData.slot+1) + "  " + (modelData.empty ? "+ Add child" : modelData.label)
+                                        hint: modelData.empty ? "Add a child to this parent" : "Edit " + modelData.label
+                                        onClicked: modelData.empty ? studio.addChild(modelData.slot,false) : studio.selectNode(modelData.id)
+                                        ButtonMove { enabled: !childSlotButton.modelData.empty; buttonId: childSlotButton.modelData.id }
+                                    }
+                                }
                             }
                             ColumnLayout {
                                 Layout.fillWidth: true
