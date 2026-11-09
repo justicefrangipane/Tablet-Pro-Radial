@@ -1,4 +1,36 @@
-# Current release: 0.3.15
+# Local candidate: 0.3.18
+
+The editor exposes a Pen trigger row below its toolbar: an enable switch, an explicitly named Barrel button (default) / Invert or second button choice, the existing keyboard shortcut, and Pen settings for diagnostics. Selection and enable state use the existing persisted preferences and take effect immediately; saved custom selections are retained across restarts. The fresh-install defaults remain enabled with barrel selected. The pen setup dialog uses the same unambiguous labels.
+
+Keyboard-driven UI checks cover changing the trigger, persistence across controller restart, disabling/re-enabling, and fitting the row inside the 900-by-640 minimum editor window.
+
+Dragging out of a modifier now arms a separate hover lifetime as soon as the drag threshold is crossed. Selecting-contact lift and ordinary pen tip-up preserve it; a DLL in-range-to-out-of-range transition, a native active-pen proximity exit, or Qt proximity leave releases it. A hover exit before selecting-contact lift cannot rearm the key. One-stroke tap behavior and docked double-tap latching remain distinct, and a stroke completion preserves unrelated hover locks.
+
+Successful action selection and modifier selection dismiss the floating overlay after gesture cleanup. A narrowly scoped selection-dismissal flag preserves held modifiers through both QML and native window-hide handlers; explicit Hide and other cancellation paths still release them. Delayed pointer cancellation from a still-held parent-launch finger cannot cancel a completed selection. The dock stays visible and child menus close back to it. Tests exercise these paths through QML and real Windows key state; physical interaction acceptance remains a user-device check.
+
+Not published. Exact release notes require Justice or Bassem approval before uploads or update-feed changes.
+
+# Previous local candidate: 0.3.17
+
+The existing TabletProHIDx64.dll is retained (SHA-256 `76764131dd9c8fcb51ec2c2d9cc87b032157e4f46015dfa1dd610751f0020eac`, identical to Studio's current `lib` copy). Two isolated listeners request continuous packets using `(sink, 0, 1, mode)`: integrated mode 0 and external/generic mode 1. All sixteen signed fields survive IPC; analog updates are coalesced, but every contact, proximity and button transition is sent immediately. Each listener has independent validation, state and failure handling.
+
+DLL tip transitions now reach the one-stroke modifier observer. A second observed input channel may complete a stroke when the first channel misses the release; an unmatched release and the menu-selection lift cannot complete a stroke. Native Windows tests cover real held-key release through the DLL signal boundary. Hide, trigger and existing cancellation behavior remain, and listener loss or tracked-device removal releases owned modifiers.
+
+The persistent Windows observer registers both pen HID usages, retains per-device tip state, and maps report coordinates through that device's display mapping and Qt monitor scaling. Mouse and touch cannot replace the pen position. The main radial now uses the tracked pen location as well as held parent menus. Raw out-of-range clears the active pen location. This does not move an already-open menu beneath a drawing stroke or relocate a parent popup across overlay screens.
+
+Physical Cintiq Pro 17 evidence: the initial background check recorded 11 DLL tip-downs and 11 tip-ups, matching 11 native HID down/up pairs, with hover positions and full packets. A subsequent visible monitor also received packets. This verifies event reception, not end-to-end acceptance in every drawing application. Surface Pro 11 physical testing, MPP side-button behavior, mixed-monitor/rotated display accuracy, and driver-specific tilt units remain unverified. The legacy DLL does not identify a device in its packets or report capability flags; zero data is not a capability claim. Native position/contact tracking retains device identity separately. No Wacom driver settings or focus-harvesting workaround are installed.
+
+`--pen-diagnostics <report.json>` opens an observation-only window with both listener counters and pen position, writing a bounded local JSON report. It does not start Radial's shortcuts or modifier injection. Pen setup also includes live listener counts. The supplied `lib for chatgpt.zip` was 22 bytes with zero entries; the adjacent current Studio DLL matched the shipped binary. The adjacent older `lib.zip` contains a different 2021 DLL, which was not substituted for the 2025 binary.
+
+This candidate is not published. Exact release notes require Justice or Bassem's approval before uploads or update-feed changes.
+
+# Previous local candidate: 0.3.16
+
+Sliding outward uses the original fan renderer and gesture engine in both layouts. Hold for 300 ms retains the full circular menu at the latest pen tip. Nested fan parents can hold to open a radial, and parents inside a held radial can slide into a fan while retaining the same pointer until release. Fan selection keeps directional opening gates, neutral cancellation, nested backtracking, viewport fitting, and coalesced-input handling.
+
+This candidate is not published. Exact release notes require Justice or Bassem's approval before uploads or update-feed changes.
+
+# Published release: 0.3.15
 
 Editor buttons can be dragged from the outline or named child controls onto an existing parent in the outline or preview. Arrange buttons enables direct dragging in either the radial or docked preview; Done arranging restores gesture simulation. Drop feedback shows the target and validation result, and edge scrolling keeps lower list parents reachable. Mouse and touch drags, Escape cancellation, outside drops, edge scrolling, and single-step Undo are exercised through the actual QML.
 

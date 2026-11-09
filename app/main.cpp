@@ -26,18 +26,60 @@
 #include <QEventLoop>
 #include <QPainterPath>
 #include <QLineF>
+#include <QDialog>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QJsonArray>
 #include <cmath>
 #include <cstring>
 
 using namespace tabletpro;
 
 int main(int argc,char**argv) {
-    for(int i=1;i<argc;++i)if(std::strcmp(argv[i],"--pen-helper")==0)return StylusInput::runHelper();
+    bool genericPen=false;for(int i=1;i<argc;++i)genericPen|=std::strcmp(argv[i],"--generic-pen")==0;
+    for(int i=1;i<argc;++i)if(std::strcmp(argv[i],"--pen-helper")==0)return StylusInput::runHelper(genericPen);
     QApplication app(argc,argv);
     QQuickStyle::setStyle("Basic");
     app.setOrganizationName("TabletPro");app.setApplicationName("RadialStudio");app.setApplicationVersion(TABLETPRO_VERSION);
     app.setWindowIcon(DesktopShell::icon());
     const QStringList args=app.arguments();
+    const int diagnosticIndex=args.indexOf("--pen-diagnostics");
+    if(diagnosticIndex>=0){
+        if(diagnosticIndex+1>=args.size())return 5;
+        const auto output=args[diagnosticIndex+1];
+        StylusInput pen;PenPositionTracker position;
+        QDialog window;window.setWindowTitle("Radial — Pen input check");window.resize(620,380);
+        auto* layout=new QVBoxLayout(&window);auto* label=new QLabel;label->setWordWrap(true);layout->addWidget(label);
+        QJsonArray transitions;quint64 nativeDowns=0,nativeUps=0;QElapsedTimer elapsed;elapsed.start();
+        const auto record=[&](QString source,bool down){
+            transitions.append(QJsonObject{{"ms",double(elapsed.elapsed())},{"source",source},{"down",down}});
+            while(transitions.size()>200)transitions.removeFirst();
+        };
+        QObject::connect(&position,&PenPositionTracker::contactObserved,&app,[&](quintptr source,bool down,bool){if(down)++nativeDowns;else ++nativeUps;record(QString("Windows %1").arg(source),down);});
+        QObject::connect(&pen,&StylusInput::tipChanged,&app,[&](quintptr source,bool down){record(QString("DLL %1").arg(source),down);});
+        QTimer refresh;refresh.setInterval(200);
+        const auto update=[&]{
+            const auto p=position.position();
+            QString text="Hover over the screen, then draw and lift in your drawing app.\\nThis check observes pen input without triggering shortcuts.\\n\\n";
+            text.replace("\\n","\n");
+            const auto rows=pen.readings();
+            for(const auto& row:rows){const auto r=row.toMap();text+=QString("%1: %2\nPackets %3  ·  tip down %4 / up %5\nTilt (DLL units) %6, %7  ·  pressure (raw) %8\nBarrel %9 / invert %10\n\n").arg(r["name"].toString(),r["status"].toString(),r["packets"].toString(),r["tipDowns"].toString(),r["tipUps"].toString(),r["tiltX"].toString(),r["tiltY"].toString(),r["pressure"].toString(),r["barrel"].toBool()?"down":"up",r["invert"].toBool()?"on":"off");}
+            auto* penScreen=p?QGuiApplication::screenAt(p->toPoint()):nullptr;
+            text+=QString("Windows pen down %1 / up %2\nPen position (logical px): %3").arg(nativeDowns).arg(nativeUps).arg(p?QString("%1, %2").arg(p->x(),0,'f',0).arg(p->y(),0,'f',0):"Waiting for hover");
+            if(penScreen)text+=QString("\nDisplay scaling: %1% — coordinates match Radial's layout").arg(penScreen->devicePixelRatio()*100,0,'f',0);
+            label->setText(text);
+            QJsonObject report{{"version",TABLETPRO_VERSION},{"elapsedMs",double(elapsed.elapsed())},{"channels",QJsonArray::fromVariantList(rows)},
+                {"nativeTipDowns",double(nativeDowns)},{"nativeTipUps",double(nativeUps)},{"events",transitions},{"penPositionKnown",bool(p)},
+                {"positionUnits","Qt logical screen pixels"},{"tiltUnits","DLL device-scaled values; not calibrated degrees"},{"pressureUnits","raw HID values"}};
+            if(penScreen)report["displayScale"]=penScreen->devicePixelRatio();
+            if(p){report["penX"]=p->x();report["penY"]=p->y();}
+            QSaveFile file(output);if(file.open(QIODevice::WriteOnly)){const auto bytes=QJsonDocument(report).toJson();if(file.write(bytes)==bytes.size())file.commit();}
+        };
+        QObject::connect(&refresh,&QTimer::timeout,&app,update);
+        QObject::connect(&app,&QCoreApplication::aboutToQuit,&app,update);
+        position.start();pen.setEnabled(true);pen.start();update();refresh.start();window.show();
+        return app.exec();
+    }
     const int exportIndex=args.indexOf("--export-default");
     if(exportIndex>=0&&exportIndex+1<args.size()){
         QSaveFile file(args[exportIndex+1]);const auto bytes=encodeProfile(radial::defaultProfile());
@@ -140,14 +182,15 @@ int main(int argc,char**argv) {
     }
     QObject::connect(&studio,&StudioController::showRuntimeRequested,&app,[&](quintptr target,bool toggle) {
         if(overlay->isVisible()&&toggle){studio.runtime()->cancel();overlay->hide();return;}
-        QScreen* screen=QGuiApplication::screenAt(QCursor::pos());if(!screen)screen=editor->screen();
+        const auto invocationPoint=studio.platform()->penPosition().value_or(QPointF(QCursor::pos()));
+        QScreen* screen=QGuiApplication::screenAt(invocationPoint.toPoint());if(!screen)screen=editor->screen();
         if(!screen)screen=QGuiApplication::primaryScreen();
         if(!screen)return;
         const auto available=screen->availableGeometry();
         overlay->setScreen(screen);
         overlay->setGeometry(available);
         studio.runtime()->setViewport(available.width(),available.height());
-        const auto cursor=QCursor::pos()-available.topLeft();
+        const auto cursor=invocationPoint-available.topLeft();
         studio.runtime()->setRadialCenter(cursor.x(),cursor.y());
         studio.runtime()->setInvocationTarget(target);
         backdrop.setEnabled(false); // A hidden window may retain a previous motion mask.
@@ -186,7 +229,7 @@ int main(int argc,char**argv) {
                 for(const auto& value:studio.preview()->buttons())if(value.toMap()["id"]=="text")text=value.toMap();
                 const double x=text["dockX"].toDouble(),y=text["dockY"].toDouble();
                 studio.selectNode("text");studio.preview()->pointerPressed(91,x,y);studio.preview()->pointerMoved(91,x+42,y);
-                const auto children=studio.preview()->parentButtons();
+                const auto children=studio.preview()->childButtons();
                 if(children.size()!=6){qCritical()<<"Expected six Text children";app.exit(6);return;}
                 const auto bold=children.first().toMap();studio.preview()->pointerMoved(91,bold["cx"].toDouble(),bold["cy"].toDouble());
                 QTimer::singleShot(200,&app,[&,output,saved,docked,bold] {
@@ -197,7 +240,7 @@ int main(int argc,char**argv) {
                     for(const auto& value:studio.preview()->buttons())if(value.toMap()["id"]=="settings")settings=value.toMap();
                     const double sx=settings["dockX"].toDouble(),sy=settings["dockY"].toDouble();
                     studio.preview()->pointerPressed(92,sx,sy);studio.preview()->pointerMoved(92,sx+42,sy);
-                    const bool lastGroupFits=studio.preview()->parentButtons().size()==5;
+                    const bool lastGroupFits=studio.preview()->childButtons().size()==5;
                     studio.preview()->cancel();
                     qInfo().noquote()<<QJsonDocument(QJsonObject{{"dockCompleted",docked},{"sixChildren",true},{"previewCommitted",committed},{"lastDockGroupFits",lastGroupFits}}).toJson(QJsonDocument::Compact);
                     const bool previewPassed=saved&&docked&&committed&&lastGroupFits;
@@ -248,7 +291,7 @@ int main(int argc,char**argv) {
                             for(const auto& value:studio.runtime()->buttons())if(value.toMap()["id"]=="text")text=value.toMap();
                             const double x=text["dockX"].toDouble(),y=text["dockY"].toDouble();
                             studio.runtime()->pointerPressed(94,x,y);studio.runtime()->pointerMoved(94,x+42,y);
-                            const auto children=studio.runtime()->parentButtons();
+                            const auto children=studio.runtime()->childButtons();
                             if(children.size()!=6){app.exit(9);return;}
                             const auto bold=children.first().toMap();
                             studio.runtime()->pointerMoved(94,bold["cx"].toDouble(),bold["cy"].toDouble());

@@ -6,24 +6,28 @@ Item {
     property var session
     property bool glassEnabled: false
     property bool reducedMotion: false
-    visible: session && session.parentMenuOpen
+    readonly property bool open: session && session.parentMenuOpen
     component MenuPointer: TapHandler {
-        property int pointerId: point.id
+        property int pointerId: 0
         property bool ownsContact: false
         property int capturedId: 0
+        enabled: menu.open || ownsContact
         gesturePolicy: TapHandler.ReleaseWithinBounds
         acceptedButtons: Qt.LeftButton
-        onPressedChanged: if(pressed){
-            capturedId=pointerId;ownsContact=true;
-            menu.session.parentPointerPressed(capturedId,point.position.x,point.position.y)
-        }
-        onPointChanged: if(ownsContact && pressed)menu.session.parentPointerMoved(capturedId,point.position.x,point.position.y)
+        onPointChanged: if(ownsContact && pressed)menu.session.pointerMoved(capturedId,point.position.x,point.position.y)
         onGrabChanged: (transition,eventPoint) => {
+            if(transition===PointerDevice.GrabExclusive){
+                // The handler point can still contain the previous contact when
+                // pressed changes; the grab event identifies this contact.
+                capturedId=pointerId || eventPoint.id;ownsContact=true
+                menu.session.pointerPressed(capturedId,eventPoint.position.x,eventPoint.position.y)
+                return
+            }
             if(!ownsContact)return
             if(transition===PointerDevice.UngrabExclusive){
                 ownsContact=false
-                menu.session.parentPointerReleased(capturedId,eventPoint.position.x,eventPoint.position.y)
-            }else if(transition===PointerDevice.CancelGrabExclusive){ownsContact=false;menu.session.cancel()}
+                menu.session.pointerReleased(capturedId,eventPoint.position.x,eventPoint.position.y)
+            }else if(transition===PointerDevice.CancelGrabExclusive){ownsContact=false;if(menu.session.active)menu.session.cancel()}
         }
     }
     MenuPointer { acceptedDevices: PointerDevice.Stylus | PointerDevice.Airbrush; pointerId: -2 }
@@ -31,6 +35,7 @@ Item {
     MenuPointer { acceptedDevices: PointerDevice.TouchScreen }
     RadialSurface {
         objectName: "parentMenuSurface"
+        visible: menu.open
         x: menu.session ? menu.session.parentCenter.x-100 : 0
         y: menu.session ? menu.session.parentCenter.y-100 : 0
         width: 200; height: 200; clip: true
@@ -43,6 +48,7 @@ Item {
         enabled: false
     }
     Rectangle {
+        visible: menu.open
         x: menu.session ? menu.session.parentCenter.x-38 : 0
         y: menu.session ? menu.session.parentCenter.y-38 : 0
         width: 76; height: 76; radius: 38

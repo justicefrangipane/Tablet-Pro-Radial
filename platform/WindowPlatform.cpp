@@ -185,6 +185,9 @@ bool invocationInputDown(quint16 mainKey, const QStringList& owned)
 
 WindowPlatform::WindowPlatform(QObject* parent) : QObject(parent)
 {
+    connect(&m_penPosition,&PenPositionTracker::contactObserved,&m_penStroke,&PenStrokeMonitor::contact);
+    connect(&m_penPosition,&PenPositionTracker::deviceLost,this,&WindowPlatform::releaseModifiers);
+    connect(&m_penPosition,&PenPositionTracker::proximityLeft,this,&WindowPlatform::finishPenHover);
     connect(&m_penStroke,&PenStrokeMonitor::strokeFinished,this,[this]{
         const auto generation=m_strokeGeneration;
         // Let the pen-up enter the drawing app's input queue before our key-ups.
@@ -277,7 +280,7 @@ bool WindowPlatform::configureOverlay(QQuickWindow* window)
                 applyOverlayStyle();
             else {
                 const bool queued = hasQueuedAction();
-                releaseModifiers();
+                if(!m_overlay || !m_overlay->property("selectionDismissal").toBool())releaseModifiers();
                 releaseTarget();
                 if (queued)
                     emit targetLost();
@@ -385,6 +388,7 @@ bool WindowPlatform::setModifierHeld(const QString& key, bool held, quintptr tar
     } else {
         m_heldModifiers.removeAll(key);
         m_strokeModifiers.removeAll(key);
+        m_hoverModifiers.removeAll(key);
         if(m_strokeModifiers.isEmpty()){m_penStroke.stop();++m_strokeGeneration;}
         if(m_heldModifiers.isEmpty()){m_modifierTarget=0;m_modifierProcess=m_modifierThread=0;if(!m_capturedTarget)m_targetWatch.stop();}
     }
@@ -403,6 +407,23 @@ bool WindowPlatform::armNextStroke(const QString& key) {
     if(!m_penStroke.start())return fail("Pen contact monitoring could not start. The modifier was released; tap again to retry.");
     if(!m_strokeModifiers.contains(key))m_strokeModifiers.append(key);
     return true;
+}
+bool WindowPlatform::armUntilPenLeaves(const QString& key){
+    if(!m_heldModifiers.contains(key))return false;
+    m_strokeModifiers.removeAll(key);
+    if(m_strokeModifiers.isEmpty()){m_penStroke.stop();++m_strokeGeneration;}
+    if(!m_hoverModifiers.contains(key))m_hoverModifiers.append(key);
+    return true;
+}
+void WindowPlatform::finishPenHover(){
+    if(m_hoverModifiers.isEmpty())return;
+    const auto keys=m_hoverModifiers;
+    for(const auto& key:keys)setModifierHeld(key,false);
+    emit hoverModifiersReleased();
+}
+void WindowPlatform::observeStylusTip(quintptr source,bool down){
+    // Separate namespace from native HID handles and mouse-promotion contacts.
+    m_penStroke.contactAtCursor((quintptr(1)<<(sizeof(quintptr)*8-2))|source,down);
 }
 std::optional<QPointF> WindowPlatform::penPositionInOverlay() const {
     const auto point=m_penPosition.position();

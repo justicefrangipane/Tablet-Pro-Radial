@@ -12,6 +12,7 @@ Window {
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     signal quitRequested()
     property bool menuOpen: false
+    property bool selectionDismissal: false
     readonly property bool morphing: studio.runtime.transitioning
     onMorphingChanged: { if(morphing){menuOpen=false;settingsBloomAnimation.stop();bloomProgress=0;} }
     readonly property bool childrenVisible: surface.visualBounds.width > 0 || studio.runtime.parentMenuOpen
@@ -78,13 +79,21 @@ Window {
         menuOpen = false; editingButtons=false; resultMessage = "";
         settingsBloomAnimation.stop();bloomProgress=0;
         if (visible) studio.runtime.setViewport(surface.width,surface.height);
-        else studio.runtime.cancel();
+        else if(!selectionDismissal)studio.runtime.cancel();
     }
     Shortcut { sequence: "Escape"; enabled: overlay.visible; onActivated: { overlay.menuOpen=false;overlay.editingButtons=false; studio.runtime.cancel(); } }
     Connections {
         target: studio.runtime
         function onActionReported(description) { overlay.resultMessage=description; resultTimer.restart(); }
         function onStateChanged() { if (studio.runtime.active) overlay.menuOpen=false; }
+        function onSelectionCommitted() {
+            if(studio.runtime.docked)return
+            // A completed selection hides the wheel without canceling the
+            // modifier just chosen. Explicit Hide/trigger still cancels it.
+            selectionDismissal=true
+            overlay.hide()
+            selectionDismissal=false
+        }
     }
     Connections {
         target: studio
@@ -156,7 +165,7 @@ Window {
             }
             studio.runtime.pointerReleased(pointerId,x,y)
         }
-        onCanceled: studio.runtime.cancel()
+        onCanceled: if(overlay.visible && !overlay.selectionDismissal)studio.runtime.cancel()
     }
     Rectangle {
         x: hub.x; y: hub.y; width: hub.width; height: hub.height; radius: 38

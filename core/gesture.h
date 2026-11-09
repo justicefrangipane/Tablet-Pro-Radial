@@ -74,6 +74,7 @@ public:
     void captureLost() { cancel(); }
     GestureView view() const;
     bool active() const { return active_; }
+    bool ownsPointer(std::int64_t pointerId) const { return active_ && pointerId_ == pointerId; }
 
 private:
     struct Frame {

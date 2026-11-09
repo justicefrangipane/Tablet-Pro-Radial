@@ -98,6 +98,11 @@ int main(int argc,char** argv){
             monitor.stop();check(monitor.start(),"observer restarts after cleanup");
             monitor.contact(1,true,false);monitor.stop();monitor.contact(1,false,false);
             check(strokes==1,"canceled observer cannot emit a stale stroke completion");
+            check(monitor.start(),"observer starts for redundant input channels");
+            monitor.contact(7,true,false);monitor.contact(8,true,false);monitor.contact(9,false,false);
+            check(strokes==1,"unmatched release still cannot consume a stroke with redundant sources");
+            monitor.contact(8,false,false);
+            check(strokes==2,"DLL release completes stroke even when a second channel misses the release");
         }
         captured=platform.captureForegroundTarget();
         check(platform.setModifierHeld("Ctrl",true,captured)&&platform.armNextStroke("Ctrl"),"Ctrl arms native next stroke observer");
@@ -131,6 +136,26 @@ int main(int argc,char** argv){
         check((GetAsyncKeyState(VK_CONTROL)&0x8000)&&(GetAsyncKeyState(VK_SHIFT)&0x8000),"native modifiers remain held throughout pen contact");
         pen(false,0xff515701);
         check(platform.heldModifiers().isEmpty()&&!(GetAsyncKeyState(VK_CONTROL)&0x8000)&&!(GetAsyncKeyState(VK_SHIFT)&0x8000),"native pen up releases every armed modifier");
+        captured=platform.captureForegroundTarget();
+        check(platform.setModifierHeld("Ctrl",true,captured)&&platform.armNextStroke("Ctrl"),"modifier arms for DLL tip-up path");
+        platform.observeStylusTip(1,false);settle();
+        check(GetAsyncKeyState(VK_CONTROL)&0x8000,"DLL selection lift alone cannot release modifier");
+        platform.observeStylusTip(1,true);settle();
+        check(GetAsyncKeyState(VK_CONTROL)&0x8000,"DLL contact preserves modifier throughout stroke");
+        platform.observeStylusTip(1,false);settle();
+        check(platform.heldModifiers().isEmpty()&&!(GetAsyncKeyState(VK_CONTROL)&0x8000),"DLL pen up releases real Windows modifier key");
+        QQuickWindow overlay;overlay.setGeometry(0,0,1,1);platform.configureOverlay(&overlay);overlay.show();settle();
+        captured=platform.captureForegroundTarget();
+        check(platform.setModifierHeld("Alt",true,captured)&&platform.armUntilPenLeaves("Alt"),"real Alt arms until hover exit");
+        check(platform.setModifierHeld("Ctrl",true,captured)&&platform.armNextStroke("Ctrl"),"one-stroke Ctrl coexists with hover Alt");
+        overlay.setProperty("selectionDismissal",true);overlay.hide();overlay.setProperty("selectionDismissal",false);settle();
+        check((GetAsyncKeyState(VK_MENU)&0x8000)&&(GetAsyncKeyState(VK_CONTROL)&0x8000),"automatic selection dismissal preserves both modifier lifetimes");
+        platform.observeStylusTip(1,true);platform.observeStylusTip(1,false);settle();
+        check((GetAsyncKeyState(VK_MENU)&0x8000)&&!(GetAsyncKeyState(VK_CONTROL)&0x8000),"tip-up releases only the one-stroke modifier while the menu is hidden");
+        platform.finishPenHover();settle();check(!(GetAsyncKeyState(VK_MENU)&0x8000),"hover exit releases the remaining modifier while hidden");
+        overlay.show();settle();captured=platform.captureForegroundTarget();
+        check(platform.setModifierHeld("Ctrl",true,captured),"hold before an explicit hide");
+        overlay.hide();settle();check(!(GetAsyncKeyState(VK_CONTROL)&0x8000),"ordinary hide still releases held modifiers");
         captured=platform.captureForegroundTarget();check(platform.setModifierHeld("Alt",true,captured),"hold before target exits");
         PostMessageW(window,WM_CLOSE,0,0);child.waitForFinished(3000);settle(100);
         check(platform.heldModifiers().isEmpty()&&!(GetAsyncKeyState(VK_MENU)&0x8000),"target loss releases held key");

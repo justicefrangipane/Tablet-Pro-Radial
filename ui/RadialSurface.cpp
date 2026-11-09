@@ -285,7 +285,7 @@ namespace {
 void paintModifier(QPainter& p,const Button& b,QPointF center){
     if(b.modifierState.isEmpty())return;
     p.save();p.translate(center+QPointF(0,b.caption.isEmpty()?14:-21));p.setPen(QPen(QColor("#ffe5bd"),1));p.setBrush(QColor("#ffe5bd"));
-    if(b.modifierState=="latched"){
+    if(b.modifierState=="latched"||b.modifierState=="hover"){
         p.setBrush(Qt::NoBrush);p.drawRoundedRect(QRectF(-3,-2,6,5),1,1);p.drawArc(QRectF(-2,-6,4,6),0,180*16);
     }else if(b.modifierState=="armed"){
         p.setBrush(Qt::NoBrush);p.drawEllipse(QPointF(0,0),4,4);

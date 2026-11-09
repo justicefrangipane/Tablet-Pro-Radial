@@ -51,6 +51,10 @@ public:
     bool setModifierHeld(const QString& key, bool held, quintptr target = 0);
     void releaseModifiers();
     bool armNextStroke(const QString& key);
+    bool armUntilPenLeaves(const QString& key);
+    void finishPenHover();
+    void observeStylusTip(quintptr source, bool down);
+    std::optional<QPointF> penPosition() const { return m_penPosition.position(); }
     std::optional<QPointF> penPositionInOverlay() const;
     QStringList heldModifiers() const { return m_heldModifiers; }
     bool registerToggleHotkey();
@@ -68,6 +72,7 @@ signals:
     void actionDispatchFinished(bool success, const QString& error);
     void modifiersReleased();
     void strokeModifiersReleased();
+    void hoverModifiersReleased();
 
 private:
     struct QueuedAction {
@@ -101,6 +106,7 @@ private:
     QVector<quint32> m_ownedKeys;
     QStringList m_heldModifiers;
     QStringList m_strokeModifiers;
+    QStringList m_hoverModifiers;
     PenStrokeMonitor m_penStroke;
     PenPositionTracker m_penPosition;
     quint64 m_strokeGeneration=0;

@@ -368,9 +368,9 @@ ApplicationWindow {
             StudioCombo {
                 Layout.fillWidth: true
                 enabled: studio.stylus.enabled
-                model: ["First side button", "Second side button"]
+                model: ["Barrel button (default)", "Invert / second button"]
                 currentIndex: studio.stylus.selectedSideButton - 1
-                Accessible.name: "Pen side button"
+                Accessible.name: "Button that opens the radial menu"
                 onActivated: studio.stylus.selectedSideButton = currentIndex + 1
             }
             Rectangle {
@@ -391,6 +391,20 @@ ApplicationWindow {
                 }
             }
             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#344357" }
+            Repeater {
+                model: studio.stylus.readings
+                Label {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    color: "#b8c7da"
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    text: modelData.name + ": " + modelData.status
+                          + " · tip down " + modelData.tipDowns + " / up " + modelData.tipUps
+                          + (modelData.packets > 0 ? "\nTilt (DLL units) " + modelData.tiltX + ", " + modelData.tiltY
+                             + " · pressure (raw) " + modelData.pressure : "")
+                }
+            }
             SectionLabel { text: "USING YOUR PEN DRIVER" }
             Label {
                 Layout.fillWidth: true
@@ -534,13 +548,51 @@ ApplicationWindow {
                 StudioButton { text: "Open"; subtle: true; onClicked: openDialog.open(); hint: "Open a radial file as a draft; Apply publishes it" }
                 StudioButton { text: "Save"; visible: editor.width >= 1060 && studio.currentFile.toString().length > 0; hint: "Save this file · Ctrl+S"; onClicked: editor.saveCurrent() }
                 StudioButton { text: editor.width < 1060 ? "Save test…" : "Save test radial…"; Accessible.name: "Save test radial file"; hint: "Save the draft menu and appearance settings to Test.radial.json · Ctrl+Shift+S"; onClicked: editor.saveTestAs() }
+                StudioButton { text: "Open overlay"; primary: true; onClicked: studio.showOverlay(); hint: "Open the applied menu on your desktop" }
+            }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#27313e" }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 58
+            color: "#171e28"
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 24
+                anchors.rightMargin: 22
+                spacing: 14
+                StudioSwitch {
+                    objectName: "editorPenTriggerEnabled"
+                    text: "Pen trigger"
+                    checked: studio.stylus.enabled
+                    onToggled: studio.stylus.enabled = checked
+                    Accessible.name: "Enable the pen button to open the radial menu"
+                }
+                StudioCombo {
+                    objectName: "editorPenTrigger"
+                    Layout.preferredWidth: 220
+                    enabled: studio.stylus.enabled
+                    model: ["Barrel button (default)", "Invert / second button"]
+                    currentIndex: studio.stylus.selectedSideButton - 1
+                    Accessible.name: "Button that opens the radial menu"
+                    onActivated: studio.stylus.selectedSideButton = currentIndex + 1
+                }
+                Label {
+                    text: "Saved automatically"
+                    visible: editor.width >= 1060
+                    color: "#8a99ad"
+                    font.pixelSize: 11
+                }
+                Item { Layout.fillWidth: true }
+                Label { Layout.preferredWidth: 150; text: "Ctrl+Alt+Space also works"; elide: Text.ElideRight; color: "#a8b8cc"; font.pixelSize: 11 }
                 StudioButton {
-                    text: "Pen button"
+                    objectName: "editorPenSettings"
+                    text: "Pen settings"
+                    subtle: true
                     hint: studio.stylus.status
-                    Accessible.name: "Pen button settings. " + studio.stylus.status
                     onClicked: penDialog.open()
                 }
-                StudioButton { text: "Open overlay"; primary: true; onClicked: studio.showOverlay(); hint: "Open the applied menu on your desktop" }
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#27313e" }
         }
@@ -756,7 +808,7 @@ ApplicationWindow {
                     }
                     Label {
                         Layout.fillWidth: true
-                        text: editor.arrangeButtons ? "Drag a button onto a parent in the preview or the menu list. Green means it can move. Undo restores the previous layout." : "Hold a parent for 300 ms to open its radial. Slide out to open at your finger. Use Arrange buttons to move buttons into parents."
+                        text: editor.arrangeButtons ? "Drag a button onto a parent in the preview or the menu list. Green means it can move. Undo restores the previous layout." : "Hold a parent for 300 ms to open its radial. Slide out for a fan. Use Arrange buttons to move buttons into parents."
                         color: "#7d90a7"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -809,7 +861,7 @@ ApplicationWindow {
                             Label {
                                 Layout.fillWidth: true
                                 visible: studio.selectedKind === "group"
-                                text: "Hold for 300 ms to open at the pen tip. Slide out to open at your finger. Choose a child below to edit it."
+                                text: "Hold for 300 ms to open a radial at the pen tip. Slide out for a fan. Choose a child below to edit it."
                                 color: "#8ba1bb"
                                 font.pixelSize: 11
                                 wrapMode: Text.WordWrap

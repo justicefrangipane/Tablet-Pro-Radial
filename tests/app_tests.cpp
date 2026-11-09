@@ -30,7 +30,7 @@ void check(bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
 }
 QVariantMap button(const MenuSession& session, const QString& id, bool child = false) {
-    for (const auto& item : child ? session.parentButtons() : session.buttons()) {
+    for (const auto& item : child ? (session.parentMenuOpen() ? session.parentButtons() : session.childButtons()) : session.buttons()) {
         const auto entry = item.toMap();
         if (entry.value("id").toString() == id) return entry;
     }
@@ -55,10 +55,9 @@ void parentMenuTests(const QString& directory){
     check(session.parentMenuOpen()&&reports==0,"launching finger lift cannot select or close the pen's child menu");
     session.parentPointerReleased(-1,bold["cx"].toDouble(),bold["cy"].toDouble());
     check(!session.active()&&reports==1,"pen can select a child independently of the launching finger");
-    session.pointerPressed(2,x,y);session.pointerMoved(2,230,y);const auto finger=session.parentCenter();wait(330);
-    check(finger==QPointF(230,y)&&session.parentCenter()==finger,"slide opens at the finger and disarms the delayed pen relocation");
-    session.pointerReleased(2,230,y);check(session.parentMenuOpen(),"finger can lift in the neutral center and then tap a child");
-    session.parentBack();check(!session.active(),"center closes a top-level child radial");
+    session.pointerPressed(2,x,y);session.pointerMoved(2,x+42,y);wait(330);
+    check(!session.parentMenuOpen()&&session.childButtons().size()==6,"slide opens the original fan and disarms delayed pen relocation");
+    session.pointerReleased(2,x+42,y);check(!session.active()&&reports==1,"neutral fan release closes without an action");
     session.pointerPressed(3,x,y);session.cancel();wait(330);check(!session.active(),"cancel removes pending 300 ms timer");
     session.pointerPressed(3,x,y);session.setViewport(1100,800);wait(330);check(!session.active(),"viewport change removes pending hold");
     session.setProfile(radial::defaultProfile());const auto tools=button(session,"tools");
@@ -66,20 +65,29 @@ void parentMenuTests(const QString& directory){
     auto text=button(session,"text",true);session.parentPointerPressed(5,text["cx"].toDouble(),text["cy"].toDouble());session.parentPointerReleased(5,text["cx"].toDouble(),text["cy"].toDouble());
     check(session.parentLabel()=="Text"&&session.parentButtons().size()==6,"existing nested parents open their own radial by tapping");
     session.parentBack();check(session.parentButtons().size()==4,"Back returns to the previous parent menu");session.cancel();
+    session.pointerPressed(6,tools["dockX"].toDouble(),tools["dockY"].toDouble());
+    session.pointerMoved(6,tools["dockX"].toDouble()+42,tools["dockY"].toDouble());
+    text=button(session,"text",true);session.pointerMoved(6,text["cx"].toDouble(),text["cy"].toDouble());wait(330);
+    check(session.parentMenuOpen()&&session.parentLabel()=="Text"&&session.parentCenter()==QPointF(550,400),"holding a nested fan parent opens its radial at the pen tip");session.cancel();
     session.toggleDock();const auto floatingTools=button(session,"tools");session.pointerPressed(7,floatingTools["cx"].toDouble(),floatingTools["cy"].toDouble());wait(330);
     check(session.parentMenuOpen(),"floating parent supports the same 300 ms hold");session.cancel();
     auto withModifier=radial::defaultProfile();
     withModifier.nodes.at("tools").children[4]="modifier.Alt";withModifier.rootSlots[2].reset();
     session.setProfile(withModifier);session.toggleDock();const auto modifierParent=button(session,"tools");
-    const auto openModifierParent=[&]{session.pointerPressed(8,modifierParent["dockX"].toDouble(),modifierParent["dockY"].toDouble());session.pointerMoved(8,240,400);};
+    const auto openModifierParent=[&]{session.pointerPressed(8,modifierParent["dockX"].toDouble(),modifierParent["dockY"].toDouble());wait(330);session.pointerReleased(8,modifierParent["dockX"].toDouble(),modifierParent["dockY"].toDouble());};
     openModifierParent();auto alt=button(session,"modifier.Alt",true);
-    session.pointerReleased(8,alt["cx"].toDouble(),alt["cy"].toDouble());
+    session.parentPointerPressed(9,500,400);session.parentPointerReleased(9,alt["cx"].toDouble(),alt["cy"].toDouble());
     check(!session.active()&&session.heldModifiers().contains("Alt"),"coalesced release into a child modifier arms the next pen stroke");
     session.finishNextStroke();check(session.heldModifiers().isEmpty(),"child modifier releases after its pen stroke");
-    openModifierParent();session.pointerReleased(8,240,400);alt=button(session,"modifier.Alt",true);
+    openModifierParent();alt=button(session,"modifier.Alt",true);
     session.parentPointerPressed(9,alt["cx"].toDouble(),alt["cy"].toDouble());session.parentPointerReleased(9,alt["cx"].toDouble(),alt["cy"].toDouble());
     check(!session.active()&&session.heldModifiers().contains("Alt"),"child modifier tap uses floating one-stroke behavior even when launched from the dock");session.cancel();
     PenPositionTracker pen;check(!pen.position(),"pen position starts unknown");
+    const QRectF penRange{100,200,1000,2000},leftDisplay{-1920,0,1920,1080};
+    check(PenPositionTracker::mapHidPosition({100,200},penRange,leftDisplay,1)==std::optional<QPointF>{{-1920,0}},"HID coordinates respect nonzero logical minima and negative screen origin");
+    check(PenPositionTracker::mapHidPosition({1100,2200},penRange,leftDisplay,1)==std::optional<QPointF>{{-1,1079}},"HID maximum stays inside the mapped display");
+    check(PenPositionTracker::mapHidPosition({100,200},penRange,leftDisplay,2)==std::optional<QPointF>{{-1,0}},"portrait rotation maps pen coordinates clockwise");
+    check(!PenPositionTracker::mapHidPosition({99,200},penRange,leftDisplay,1)&&!PenPositionTracker::mapHidPosition({100,200},{},leftDisplay,1),"invalid pen ranges and out-of-range samples cannot move the menu");
     check(PenPositionTracker::isPenMessage(0xff515701)&&!PenPositionTracker::isPenMessage(0xff515781)&&!PenPositionTracker::isPenMessage(0),"pen signature excludes touch and ordinary mouse input");
     pen.observe({350,450});pen.observe({std::numeric_limits<double>::quiet_NaN(),10});
     check(pen.position()==std::optional<QPointF>{{350,450}},"invalid pen coordinates cannot replace the latest position");pen.stop();check(!pen.position(),"stopping tracking clears its location");
@@ -364,17 +372,17 @@ void sessionTests() {
     const double x = text["dockX"].toDouble(), y = text["dockY"].toDouble();
     session.pointerPressed(77, x, y);
     session.pointerMoved(77, x + 150, y);
-    check(session.active() && session.parentButtons().size() == 6, "coalesced outward move opens children");
-    check(session.parentSelectedId().isEmpty(), "opening contact stays neutral");
+    check(session.active() && session.childButtons().size() == 6 && !session.parentMenuOpen(), "coalesced outward move opens fan children");
+    check(session.selectedId().isEmpty(), "opening contact stays neutral");
     session.pointerReleased(77, x + 150, y);
-    check(reports == 0 && session.parentMenuOpen(), "center release leaves the radial available without an action");
+    check(reports == 0 && !session.active(), "neutral fan release closes without an action");
     session.cancel();
 
     session.pointerPressed(77, x, y);
     session.pointerMoved(77, x + 42, y);
     const auto bold = button(session, "text.bold", true);
     session.pointerMoved(88, bold["cx"].toDouble(), bold["cy"].toDouble());
-    check(session.parentSelectedId().isEmpty(), "foreign pointer cannot select a child");
+    check(session.selectedId().isEmpty(), "foreign pointer cannot select a child");
     session.pointerReleased(88, bold["cx"].toDouble(), bold["cy"].toDouble());
     check(session.active() && reports == 0, "foreign release cannot terminate owner");
     session.pointerReleased(77, bold["cx"].toDouble(), bold["cy"].toDouble());
@@ -450,7 +458,7 @@ void invocationGeometryTests() {
     const auto tx=text["cx"].toDouble(),ty=text["cy"].toDouble();
     session.pointerPressed(4,tx,ty);
     session.pointerMoved(4,tx+43*std::cos(radians),ty+43*std::sin(radians));
-    check(session.active() && session.parentButtons().size() == 6, "edge-clamped invocation supports a full Text radial");
+    check(session.active() && session.childButtons().size() == 6, "edge-clamped invocation supports a full Text fan");
     session.setViewport(300,240);
     check(!session.active() && session.radialCenter() == QPointF(150,120), "small viewport clamps anchor and cancels active fan");
     session.setViewport(std::numeric_limits<qreal>::quiet_NaN(),900);
@@ -477,12 +485,16 @@ void compactDockFanTests() {
         const auto x=root["dockX"].toDouble(), y=root["dockY"].toDouble();
         session.pointerPressed(90,x,y);
         session.pointerMoved(90,x+42,y);
-        check(session.active() && session.parentButtons().size()==6,"all dock rows open six children in compact viewport");
-        const auto origin=session.parentCenter();
-        check(origin.x()-100>=4 && origin.x()+100<=676 && origin.y()-100>=4 && origin.y()+100<=496,"compact dock keeps the entire circular menu inside the viewport");
+        check(session.active() && session.childButtons().size()==6,"all dock rows open six fan children in compact viewport");
+        const auto before=session.childButtons();
+        for(const auto& value:before){
+            const auto child=value.toMap();
+            const auto bounds=radial::GestureEngine::childBounds({child["fromX"].toDouble(),child["fromY"].toDouble()},child["axis"].toDouble(),radial::GestureEngine::ChildVisualOvershoot);
+            check(bounds.left>=4 && bounds.right<=676 && bounds.top>=4 && bounds.bottom<=496,"every animated fan wedge stays inside the compact viewport");
+        }
         const auto bold=button(session,"text.bold",true);
         session.pointerMoved(90,bold["cx"].toDouble(),bold["cy"].toDouble());
-        check(session.parentCenter()==origin,"opened radial stays fixed while selecting a child");
+        check(button(session,"text.bold",true)["cx"]==bold["cx"]&&button(session,"text.bold",true)["cy"]==bold["cy"],"opened fan stays fixed while selecting a child");
         session.pointerReleased(90,bold["cx"].toDouble(),bold["cy"].toDouble());
         check(!session.active() && reports==slot+1,"visible compact dock button commits once");
     }
@@ -508,8 +520,12 @@ void modifierTests(const QString& directory) {
     lift();check(session.heldModifiers().isEmpty()&&!session.active(),"single lift releases modifier");
     press();lift();check(session.heldModifiers().contains("Alt")&&state()=="latched"&&!session.active(),"double tap latches after lift");
     press();check(session.heldModifiers().isEmpty(),"next press releases latch immediately");lift();
-    press();session.pointerMoved(11,x+90,y);check(state()=="dragged"&&session.heldModifiers().contains("Alt"),"drag-out keeps key held and shows contact lock");
-    session.pointerReleased(11,x+90,y);check(session.heldModifiers().isEmpty()&&state().isEmpty(),"drag lock releases on stylus lift");
+    press();session.pointerMoved(11,x+90,y);check(state()=="hover"&&session.heldModifiers().contains("Alt"),"drag-out locks the modifier until the pen leaves hover");
+    session.pointerReleased(11,x+90,y);check(session.heldModifiers().contains("Alt")&&state()=="hover","drag lock survives the selecting contact lift");
+    session.finishNextStroke();check(session.heldModifiers().contains("Alt"),"pen-tip up does not end a hover lock");
+    session.finishPenHover();check(session.heldModifiers().isEmpty()&&state().isEmpty(),"leaving hover releases the dragged modifier");
+    press();session.pointerMoved(11,x+90,y);session.finishPenHover();session.pointerReleased(11,x+90,y);
+    check(session.heldModifiers().isEmpty(),"leaving hover before the selecting finger lifts cannot rearm the modifier");
     press();lift();press();lift();
     const auto ctrl=button(session,"modifier.Ctrl");const double cx=ctrl["dockX"].toDouble(),cy=ctrl["dockY"].toDouble();
     session.pointerPressed(12,cx,cy);check(session.heldModifiers().size()==2,"latched modifier can combine with another held modifier");
@@ -519,11 +535,11 @@ void modifierTests(const QString& directory) {
     session.cancel();
     const auto tools=button(session,"tools");const double tx=tools["dockX"].toDouble(),ty=tools["dockY"].toDouble();
     session.pointerPressed(13,tx,ty);session.pointerMoved(13,tx+42,ty);
-    check(session.parentButtons().size()==4,"new default Tools opens retained groups");
-    const auto text=button(session,"text",true);const double ax=text["angle"].toDouble();
+    check(session.childButtons().size()==4,"new default Tools opens retained groups");
+    const auto text=button(session,"text",true);const double ax=text["axis"].toDouble();
     session.pointerMoved(13,text["cx"].toDouble(),text["cy"].toDouble());
     session.pointerMoved(13,text["cx"].toDouble()+42*std::cos(ax),text["cy"].toDouble()+42*std::sin(ax));
-    check(session.parentButtons().size()==6,"new default retains nested Text commands");
+    check(session.childButtons().size()==6,"new default retains nested Text commands");
     session.cancel();
     session.toggleDock();
     const auto tapKey=[&](const char* key){const auto b=button(session,QString("modifier.")+key);const auto px=b["cx"].toDouble(),py=b["cy"].toDouble();session.pointerPressed(51,px,py);session.pointerReleased(51,px,py);};
@@ -533,6 +549,10 @@ void modifierTests(const QString& directory) {
     tapKey("Alt");tapKey("Ctrl");tapKey("Shift");
     check(session.heldModifiers().size()==3,"floating modifiers can combine for one stroke");
     session.finishNextStroke();check(session.heldModifiers().isEmpty()&&!session.active(),"pen-up ends all next-stroke modifiers");
+    const auto floatingAlt=button(session,"modifier.Alt");const auto fx=floatingAlt["cx"].toDouble(),fy=floatingAlt["cy"].toDouble();
+    session.pointerPressed(52,fx,fy);session.pointerMoved(52,fx+60,fy);session.pointerReleased(52,fx+60,fy);
+    tapKey("Ctrl");session.finishNextStroke();check(session.heldModifiers()==QStringList{"Alt"},"one-stroke release preserves a separate hover-locked modifier");
+    session.finishPenHover();check(session.heldModifiers().isEmpty(),"floating drag lock releases on hover exit");
     tapKey("Alt");session.cancel();check(session.heldModifiers().isEmpty(),"hide and cancellation release armed modifiers");
     tapKey("Ctrl");session.toggleDock();check(session.heldModifiers().isEmpty(),"docking releases next-stroke modifiers");
     const auto legacy=radial::legacyDefaultProfile();

@@ -3,6 +3,10 @@
 #include <array>
 #include <cstdlib>
 #include <iostream>
+#include <QTimer>
+#include <QElapsedTimer>
+#include <QThread>
+#include <QSet>
 
 namespace {
 int checks=0;
@@ -18,6 +22,20 @@ void field(std::array<std::byte,64>& bytes,std::size_t offset,std::uint32_t valu
 int main(int argc,char** argv) {
     QCoreApplication app(argc,argv);
     using namespace tabletpro;
+    if(app.arguments().contains("--pen-helper")){
+        const bool generic=app.arguments().contains("--generic-pen");
+        std::array<std::byte,64> data{};quint64 sequence=0;
+        const auto send=[&]{std::cout<<"TPP2 DATA "<<++sequence<<" "<<QByteArray(reinterpret_cast<const char*>(data.data()),64).toHex().constData()<<'\n'<<std::flush;};
+        std::cout<<"TPP2 READY\n"<<std::flush;
+        field(data,16,1);field(data,32,quint32(qint32(-37)));send();
+        if(qEnvironmentVariableIsSet("TABLETPRO_TEST_BAD_PACKET")&&!generic){std::cout<<"TPP2 DATA 2 abc\n"<<std::flush;}
+        else{
+            field(data,12,1);send();field(data,12,0);send();
+            field(data,8,1);send();send();field(data,8,0);send();
+            field(data,12,1);send();field(data,16,0);send();
+        }
+        QTimer::singleShot(10000,&app,&QCoreApplication::quit);return app.exec();
+    }
     std::array<std::byte,64> bytes{};
     require(!StylusButtons::decode(std::span<const std::byte>{}),"empty packet rejected");
     require(!StylusButtons::decode(std::span<const std::byte>(bytes.data(),63)),"truncated packet rejected");
@@ -39,6 +57,13 @@ int main(int argc,char** argv) {
     }
     field(bytes,28,0xffffffff); field(bytes,40,0x12345678);
     require(StylusButtons::decode(bytes).has_value(),"unrelated pressure and coordinates do not alter button decode");
+    field(bytes,32,quint32(qint32(-63)));field(bytes,36,62);field(bytes,12,1);
+    const auto full=StylusSample::decode(bytes);
+    require(full&&full->tip()&&full->values[8]==-63&&full->values[9]==62&&full->values[12]==0,"full packet retains signed tilt and tip");
+    const auto hex=QByteArray(reinterpret_cast<const char*>(bytes.data()),64).toHex();
+    require(StylusSample::fromHex(hex)->values==full->values,"IPC preserves every field exactly");
+    auto invalidHex=hex;invalidHex[5]='z';
+    require(!StylusSample::fromHex(invalidHex)&&!StylusSample::fromHex(hex.left(126)),"invalid or short hexadecimal packet rejected");
 
     StylusButtonEdges edges;
     const StylusButtons hover{false,false,true},barrel{true,false,true},invert{false,true,true},both{true,true,true};
@@ -89,5 +114,22 @@ int main(int argc,char** argv) {
     input.setEnabled(true);
     require(input.status().contains("not started"),"stop prevents automatic restart via setter");
     require(invoked==0,"configuration emits no synthetic button presses");
+#ifdef Q_OS_WIN
+    const auto waitFor=[&](auto predicate){QElapsedTimer timer;timer.start();while(!predicate()&&timer.elapsed()<4000){app.processEvents();QThread::msleep(5);}return predicate();};
+    input.setSelectedSideButton(1);
+    int downs=0,ups=0,hoverExits=0;QSet<quintptr> sources;
+    QObject::connect(&input,&StylusInput::proximityLeft,[&]{++hoverExits;});
+    QObject::connect(&input,&StylusInput::tipChanged,[&](quintptr source,bool down){sources.insert(source);if(down)++downs;else ++ups;});
+    input.start();
+    require(waitFor([&]{return ups==4;}),"both helper channels deliver every tip down and up, including leaving range");
+    require(downs==4&&sources.size()==2&&invoked==2,"channels retain independent baselines; duplicate button samples never repeat invocation");
+    require(hoverExits==2,"each listener reports hover exit independently of ordinary tip lifts");
+    const auto rows=input.readings();require(rows.size()==2&&rows[0].toMap()["tiltX"].toInt()==-37,"live monitor reports full packet values");
+    input.stop();const auto before=invoked;downs=ups=0;sources.clear();
+    qputenv("TABLETPRO_TEST_BAD_PACKET","1");input.start();
+    require(waitFor([&]{return ups==2&&input.status().contains("Invalid pen packet");}),"malformed integrated channel fails without disabling generic channel");
+    require(invoked==before+1&&sources.size()==1,"healthy channel continues independently after protocol failure");
+    input.stop();qunsetenv("TABLETPRO_TEST_BAD_PACKET");
+#endif
     std::cout<<"Stylus input: "<<checks<<" packet, edge, cancellation and lifecycle checks passed.\n";
 }

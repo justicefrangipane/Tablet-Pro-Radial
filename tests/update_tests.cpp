@@ -190,9 +190,86 @@ void parentPointerUiTests(){
     pen(QEvent::TabletRelease);expect(!studio.runtime()->parentMenuOpen()&&reports==1,"actual pen release commits exactly one child action");
     QTest::touchEvent(overlay,finger).press(2,launch,overlay);
     QTest::touchEvent(overlay,finger).move(2,QPoint(240,350),overlay);QTest::qWait(25);
-    if(!studio.runtime()->parentMenuOpen())std::cerr<<"slide state: "<<studio.runtime()->status().toStdString()<<" active="<<studio.runtime()->active()<<'\n';
-    expect(studio.runtime()->parentMenuOpen()&&studio.runtime()->parentCenter()==QPointF(240,350),"actual touch slide opens the circle at the touch position");
-    QTest::touchEvent(overlay,finger).release(2,QPoint(240,350),overlay);studio.runtime()->cancel();overlay->hide();
+    expect(!studio.runtime()->parentMenuOpen()&&studio.runtime()->childButtons().size()==6,"actual touch slide opens the original fan");
+    for(const auto& value:studio.runtime()->childButtons())if(value.toMap()["id"]=="text.bold")bold=value.toMap();
+    const QPoint fanBold(bold["cx"].toInt(),bold["cy"].toInt());
+    QTest::touchEvent(overlay,finger).move(2,fanBold,overlay);QTest::qWait(340);
+    expect(!studio.runtime()->parentMenuOpen()&&studio.runtime()->selectedId()=="text.bold","slide fan stays open without delayed relocation");
+    QTest::touchEvent(overlay,finger).release(2,fanBold,overlay);
+    expect(!studio.runtime()->active()&&reports==2,"touch fan release commits once");
+    studio.runtime()->setProfile(radial::defaultProfile());
+    QVariantMap tools;for(const auto& value:studio.runtime()->buttons())if(value.toMap()["id"]=="tools")tools=value.toMap();
+    const QPoint toolsAt(tools["dockX"].toInt(),tools["dockY"].toInt());
+    QTest::touchEvent(overlay,finger).press(3,toolsAt,overlay);QTest::qWait(340);
+    QTest::touchEvent(overlay,finger).release(3,toolsAt,overlay);
+    for(const auto& value:studio.runtime()->parentButtons())if(value.toMap()["id"]=="text")text=value.toMap();
+    const QPoint textAt(text["cx"].toInt(),text["cy"].toInt());const auto angle=text["angle"].toDouble();
+    QTest::touchEvent(overlay,finger).press(4,textAt,overlay);
+    expect(studio.runtime()->parentSelectedId()=="text","touch selects the nested parent before sliding");
+    for(int step=20;step<=50;step+=10){
+        QTest::touchEvent(overlay,finger).move(4,textAt+QPoint(qRound(step*std::cos(angle)),qRound(step*std::sin(angle))),overlay);
+        QTest::qWait(20); // Deliver compressed touch moves at frame boundaries.
+    }
+    const bool nestedFan=QTest::qWaitFor([&]{return !studio.runtime()->parentMenuOpen()&&studio.runtime()->childButtons().size()==6;},100);
+    if(!nestedFan)std::cerr<<"nested touch state: "<<studio.runtime()->status().toStdString()<<"; selected="<<studio.runtime()->parentSelectedId().toStdString()<<"; active="<<studio.runtime()->active()<<'\n';
+    expect(nestedFan,"sliding a nested parent out of a held radial opens its fan");
+    for(const auto& value:studio.runtime()->childButtons())if(value.toMap()["id"]=="text.bold")bold=value.toMap();
+    const QPoint nestedBold(bold["cx"].toInt(),bold["cy"].toInt());
+    QTest::touchEvent(overlay,finger).move(4,nestedBold,overlay);QTest::touchEvent(overlay,finger).release(4,nestedBold,overlay);
+    expect(!studio.runtime()->active()&&reports==3,"nested radial-to-fan transition retains touch ownership until release");
+    overlay->hide();
+}
+void selectionDismissalUiTests(){
+    QTemporaryDir temp;StudioController studio(nullptr,temp.path()+"/profile",true);studio.setReducedMotion(true);
+    QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("studio",&studio);engine.rootContext()->setContextProperty("startInEditor",false);
+    engine.load(QUrl("qrc:/qml/Main.qml"));expect(!engine.rootObjects().isEmpty(),"selection dismissal UI loads");
+    auto* editor=qobject_cast<QQuickWindow*>(engine.rootObjects().first());auto* overlay=editor->findChild<QQuickWindow*>("runtimeOverlay");
+    overlay->resize(900,700);overlay->show();QTest::qWait(30);
+    const auto point=[&](QString id){for(const auto& value:studio.runtime()->buttons()){const auto b=value.toMap();if(b["id"]==id)return QPoint(b[studio.runtime()->docked()?"dockX":"cx"].toInt(),b[studio.runtime()->docked()?"dockY":"cy"].toInt());}return QPoint();};
+    QTest::mouseClick(overlay,Qt::LeftButton,Qt::NoModifier,point("modifier.Alt"));QCoreApplication::processEvents();
+    expect(!overlay->isVisible()&&studio.runtime()->heldModifiers()==QStringList{"Alt"},"floating modifier tap hides the wheel without canceling its next stroke");
+    studio.runtime()->finishNextStroke();expect(studio.runtime()->heldModifiers().isEmpty(),"hidden one-stroke modifier still releases");
+    overlay->show();QTest::mouseClick(overlay,Qt::LeftButton,Qt::NoModifier,point("brush"));
+    expect(!overlay->isVisible(),"floating ordinary action closes the radial");
+    overlay->show();studio.runtime()->toggleDock();QTest::qWait(30);
+    QTest::mouseClick(overlay,Qt::LeftButton,Qt::NoModifier,point("brush"));expect(overlay->isVisible(),"docked rail remains visible after choosing an action");
+    const auto alt=point("modifier.Alt");QTest::mousePress(overlay,Qt::LeftButton,Qt::NoModifier,alt);QTest::mouseMove(overlay,alt+QPoint(80,0),20);QTest::mouseRelease(overlay,Qt::LeftButton,Qt::NoModifier,alt+QPoint(80,0));
+    expect(overlay->isVisible()&&studio.runtime()->heldModifiers()==QStringList{"Alt"},"docked drag-out survives finger lift and leaves the rail visible");
+    studio.runtime()->finishPenHover();expect(studio.runtime()->heldModifiers().isEmpty(),"hover exit releases the docked drag-out modifier");
+    studio.runtime()->toggleDock();
+    auto profile=radial::defaultProfile();profile.nodes.at("tools").children[4]="modifier.Alt";profile.rootSlots[2].reset();studio.runtime()->setProfile(profile);
+    const auto tools=point("tools");auto* finger=QTest::createTouchDevice();
+    QTest::touchEvent(overlay,finger).press(71,tools,overlay);QTest::qWait(340);
+    QVariantMap child;for(const auto& value:studio.runtime()->parentButtons())if(value.toMap()["id"]=="modifier.Alt")child=value.toMap();
+    expect(!child.isEmpty(),"held parent exposes its child modifier");
+    const QPointF at(child["cx"].toDouble(),child["cy"].toDouble());
+    QPointingDevice pen("dismissal pen",4100,QInputDevice::DeviceType::Stylus,QPointingDevice::PointerType::Pen,QInputDevice::Capability::Position|QInputDevice::Capability::Pressure,1,1);
+    for(const auto type:{QEvent::TabletPress,QEvent::TabletRelease}){const bool up=type==QEvent::TabletRelease;QTabletEvent event(type,&pen,at,overlay->mapToGlobal(at.toPoint()),up?0:0.5,0,0,0,0,0,Qt::NoModifier,Qt::LeftButton,up?Qt::NoButton:Qt::LeftButton);QCoreApplication::sendEvent(overlay,&event);QCoreApplication::processEvents();}
+    expect(!overlay->isVisible()&&studio.runtime()->heldModifiers()==QStringList{"Alt"},"child modifier closes floating menu and survives cancellation of its still-held launching finger");
+    studio.runtime()->finishNextStroke();
+}
+void editorPenTriggerUiTests(){
+    QSettings settings;settings.remove("penSideButton");settings.remove("penInputEnabled");
+    QTemporaryDir temp;StudioController studio(nullptr,temp.path()+"/profile",true);
+    QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("studio",&studio);engine.rootContext()->setContextProperty("startInEditor",true);
+    engine.load(QUrl("qrc:/qml/Main.qml"));expect(!engine.rootObjects().isEmpty(),"pen trigger editor loads");
+    auto* editor=qobject_cast<QQuickWindow*>(engine.rootObjects().first());editor->resize(900,640);editor->show();QTest::qWait(60);
+    auto* combo=editor->findChild<QQuickItem*>("editorPenTrigger");auto* enabled=editor->findChild<QQuickItem*>("editorPenTriggerEnabled");
+    auto* details=editor->findChild<QQuickItem*>("editorPenSettings");
+    expect(combo&&enabled&&details&&combo->isVisible(),"pen trigger is available directly in the editor");
+    expect(studio.stylus()->enabled()&&studio.stylus()->selectedSideButton()==1&&combo->property("currentText").toString()=="Barrel button (default)","fresh settings enable the explicitly named barrel default");
+    combo->forceActiveFocus();QTest::keyClick(editor,Qt::Key_Down);QCoreApplication::processEvents();
+    expect(studio.stylus()->selectedSideButton()==2&&settings.value("penSideButton").toInt()==2,"keyboard selection changes and immediately saves the trigger");
+    {StudioController reopened(nullptr,temp.path()+"/reopened",true);expect(reopened.stylus()->selectedSideButton()==2,"chosen trigger survives controller restart");}
+    QTest::keyClick(editor,Qt::Key_Up);enabled->forceActiveFocus();QTest::keyClick(editor,Qt::Key_Space);QCoreApplication::processEvents();
+    expect(!studio.stylus()->enabled()&&!combo->isEnabled()&&!settings.value("penInputEnabled").toBool(),"editor switch disables and saves pen-button input");
+    QTest::keyClick(editor,Qt::Key_Space);QCoreApplication::processEvents();
+    expect(studio.stylus()->enabled()&&studio.stylus()->selectedSideButton()==1,"barrel choice is retained when re-enabling input");
+    const auto bounds=details->mapRectToScene(details->boundingRect());
+    expect(editor->grabWindow().save(QDir::currentPath()+"/editor-pen-trigger.png"),"compact pen trigger editor renders");
+    if(bounds.right()>editor->width())std::cerr<<"trigger right="<<bounds.right()<<" width="<<editor->width()<<" combo="<<combo->width()<<'\n';
+    expect(bounds.right()<=editor->width()&&bounds.top()>=0&&bounds.bottom()<=editor->height(),"trigger row fits the minimum editor size");
+    editor->hide();
 }
 void editorDragUiTests(){
     QTemporaryDir temp;StudioController studio(nullptr,temp.path()+"/profile",true);studio.setReducedMotion(true);
@@ -234,6 +311,7 @@ void editorDragUiTests(){
     const auto scrollStart=rowPoint("brush"),scrollEdge=list->mapToScene({list->width()/2,list->height()-8}).toPoint();
     moveMouse(scrollStart,scrollEdge);QTest::qWait(450);
     expect(list->property("contentY").toDouble()>50&&editor->property("draggedButtonId")=="brush","outline scrolls near its edge without losing the dragged source");
+    expect(QTest::qWaitFor([&]{return rowPoint("tools").y()<list->mapToScene({0,list->height()-24}).y();},1500),"edge scrolling reveals the parent inside the shorter editor outline");
     const auto scrolledTools=rowPoint("tools");QTest::mouseMove(editor,scrolledTools,20);QTest::qWait(20);QTest::mouseRelease(editor,Qt::LeftButton,Qt::NoModifier,scrolledTools);QTest::qWait(40);
     expect(studio.draft().nodes.at("tools").children[4]=="brush","drop reaches a parent revealed by automatic scrolling");
     studio.undo();editor->resize(1180,1100);list->setProperty("contentY",0);QTest::qWait(50);
@@ -359,12 +437,15 @@ void trayTests(){
     const QPointF at(alt["cx"].toDouble(),alt["cy"].toDouble());
     const auto mouse=[&](QEvent::Type type){QMouseEvent event(type,at,at,Qt::LeftButton,type==QEvent::MouseButtonRelease?Qt::NoButton:Qt::LeftButton,Qt::NoModifier);QCoreApplication::sendEvent(surface,&event);};
     mouse(QEvent::MouseButtonPress);mouse(QEvent::MouseButtonRelease);
-    expect(studio.runtime()->heldModifiers().contains("Alt"),"floating tap arms the next pen stroke");
+    expect(studio.runtime()->heldModifiers().contains("Alt")&&!overlay->isVisible(),"floating tap arms the next pen stroke and closes the wheel");
+    overlay->show();
     mouse(QEvent::MouseButtonDblClick);mouse(QEvent::MouseButtonRelease);
     expect(studio.runtime()->heldModifiers().isEmpty(),"second floating tap cancels armed modifier");
+    overlay->show();
     mouse(QEvent::MouseButtonPress);mouse(QEvent::MouseButtonRelease);
     studio.runtime()->finishNextStroke();
     expect(studio.runtime()->heldModifiers().isEmpty(),"next pen stroke releases the floating modifier");
+    overlay->show();
     auto* center=overlay->findChild<QObject*>("moreMenuButton");
     auto* centerItem=qobject_cast<QQuickItem*>(center);
     auto* glyph=center->findChild<QQuickItem*>("hubGlyph");
@@ -448,7 +529,7 @@ int main(int argc,char** argv){
             qmlRegisterUncreatableType<MenuSession>("TabletPro",1,0,"MenuSession","Provided");
             qmlRegisterUncreatableType<StylusInput>("TabletPro",1,0,"StylusInput","Provided");
             editorDragUiTests();
-        }else{parseTests();networkTests();trayTests();parentPointerUiTests();editorDragUiTests();whatsNewTests();}
+        }else{parseTests();networkTests();trayTests();editorPenTriggerUiTests();selectionDismissalUiTests();parentPointerUiTests();editorDragUiTests();whatsNewTests();}
         std::cout<<checks<<" tray/update checks passed\n";return 0;
     }catch(const std::exception& e){std::cerr<<"FAILED: "<<e.what()<<'\n';return 1;}
 }

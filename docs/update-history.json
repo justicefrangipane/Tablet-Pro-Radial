@@ -2,6 +2,39 @@
   "app": "Tablet Pro Radial",
   "releases": [
     {
+      "version": "0.3.18",
+      "date": "2026-11-08",
+      "title": "Pen trigger, hover locks and automatic closing",
+      "improved": [
+        "The editor now has a visible Pen trigger row. Barrel button is the default; choose Invert / second button or turn pen-button triggering off. Changes save automatically.",
+        "Pen settings uses the same clear button names and remains available for live pen diagnostics. Ctrl+Alt+Space continues to open or hide the radial menu.",
+        "Dragging out from a modifier locks it on until the pen leaves hover range. Lifting the tip or the selecting finger keeps that lock active. Tapping a floating modifier still arms one pen stroke.",
+        "Choosing an action or modifier automatically closes the floating radial while preserving the selected modifier's hold. The docked rail stays visible, and selecting a child closes its menu. Explicit Hide, the trigger shortcut, editing, target changes and exit still release held modifiers."
+      ]
+    },
+    {
+      "version": "0.3.17",
+      "date": "2026-11-08",
+      "title": "Pen lift and hover tracking",
+      "fixed": [
+        "Floating modifier buttons now use pen-tip events from the Tablet Pro pen DLL as well as Windows. The modifier stays held through the next drawing stroke and releases when the tip lifts, while ignoring the lift used to select the modifier.",
+        "The main radial opens at the latest pen position. Hover tracking now also reads integrated and external pen reports and maps them to the correct display."
+      ],
+      "improved": [
+        "Integrated and external pens have separate listeners. Full pen packets retain pressure, tilt, hover, tip, barrel, invert and eraser states.",
+        "Pen settings show live listener status and tip-down/up counts. Disconnecting a tracked pen or losing a pen listener releases held modifiers."
+      ]
+    },
+    {
+      "version": "0.3.16",
+      "date": "2026-11-08",
+      "title": "Slide for a fan, hold for a radial",
+      "improved": [
+        "Sliding out of a parent button opens its children in the familiar fan shape. Slide over a child and lift to choose it; lifting in the neutral area cancels.",
+        "Holding a parent for 300 milliseconds still opens a full circular menu at the latest pen-tip position. This works in radial and docked mode, including nested parents."
+      ]
+    },
+    {
       "version": "0.3.15",
       "date": "2026-11-06",
       "title": "Build parent menus by dragging",

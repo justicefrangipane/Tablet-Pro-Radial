@@ -2,6 +2,8 @@
 #include <QCoreApplication>
 #include <array>
 #include <cstring>
+#include <bit>
+#include <QVariantMap>
 
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
@@ -15,18 +17,26 @@
 
 namespace tabletpro {
 
+std::optional<StylusSample> StylusSample::decode(std::span<const std::byte> packet) {
+    if(packet.size()!=64)return std::nullopt;
+    StylusSample sample;
+    for(std::size_t field=0;field<16;++field){
+        quint32 value=0;
+        for(unsigned i=0;i<4;++i)value|=quint32(std::to_integer<unsigned char>(packet[field*4+i]))<<(8*i);
+        if(field<5 && value>1)return std::nullopt;
+        sample.values[field]=std::bit_cast<qint32>(value);
+    }
+    return sample;
+}
+std::optional<StylusSample> StylusSample::fromHex(const QByteArray& hex){
+    if(hex.size()!=128)return std::nullopt;
+    for(auto c:hex)if(!((c>='0'&&c<='9')||(c>='a'&&c<='f')||(c>='A'&&c<='F')))return std::nullopt;
+    const auto bytes=QByteArray::fromHex(hex);
+    return decode({reinterpret_cast<const std::byte*>(bytes.constData()),std::size_t(bytes.size())});
+}
 std::optional<StylusButtons> StylusButtons::decode(std::span<const std::byte> packet) {
-    if (packet.size() != 64) return std::nullopt;
-    const auto field = [&](std::size_t offset) {
-        std::uint32_t value = 0;
-        for (unsigned i=0; i<4; ++i)
-            value |= std::uint32_t(std::to_integer<unsigned char>(packet[offset+i])) << (8*i);
-        return value;
-    };
-    // The existing consumer compares signal fields with exactly zero or one.
-    for (std::size_t offset=0; offset<=16; offset+=4)
-        if (field(offset)>1) return std::nullopt;
-    return StylusButtons{field(8)==1, field(4)==1, field(16)==1};
+    const auto sample=StylusSample::decode(packet);
+    return sample ? std::optional<StylusButtons>(sample->buttons()) : std::nullopt;
 }
 
 int StylusButtonEdges::update(const StylusButtons& buttons, int selected) {
@@ -39,131 +49,129 @@ int StylusButtonEdges::update(const StylusButtons& buttons, int selected) {
     return down && !previous ? selected : 0;
 }
 
+struct StylusInput::Channel {
+    QProcess process;
+    QTimer startup;
+    QByteArray pending;
+    StylusButtonEdges edges;
+    std::optional<StylusSample> sample;
+    QString status="Not started";
+    quint64 sequence=0, tipDowns=0, tipUps=0;
+    int index=0;
+    bool ready=false, stopping=false;
+};
+
 StylusInput::StylusInput(QObject* parent) : QObject(parent) {
-    startupTimer_.setSingleShot(true);
-    startupTimer_.setInterval(8000);
-    connect(&startupTimer_, &QTimer::timeout, this, [this] {
-        failProtocol(QStringLiteral("Pen input could not start. Toggle it off and on to retry."));
-    });
-    connect(&process_, &QProcess::readyReadStandardOutput, this, &StylusInput::readOutput);
-    connect(&process_, &QProcess::readyReadStandardError, this, [this] {
-        // DLL diagnostics are not an input-event channel.
-        process_.readAllStandardError();
-    });
-    connect(&process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
-        if (stopping_) return;
-        startupTimer_.stop(); edges_.reset(); latestButtons_.reset(); ready_=false;
-        if (error==QProcess::FailedToStart)
-            setStatus(QStringLiteral("Could not launch the pen input helper."));
-    });
-    connect(&process_, qOverload<int,QProcess::ExitStatus>(&QProcess::finished), this,
-        [this](int, QProcess::ExitStatus) {
-            startupTimer_.stop(); edges_.reset(); latestButtons_.reset(); ready_=false;
-            if (!stopping_ && enabled_ && !status_.startsWith(QStringLiteral("Pen input error:")))
-                setStatus(QStringLiteral("Pen input stopped. Toggle it off and on to retry."));
+    // Only the diagnostic display is throttled. Every contact/button transition
+    // reaches consumers immediately, including down and up in the same frame.
+    readingsTimer_.setInterval(100);readingsTimer_.setSingleShot(true);
+    connect(&readingsTimer_,&QTimer::timeout,this,&StylusInput::readingsChanged);
+    for(int i=0;i<2;++i){
+        channels_[i]=std::make_unique<Channel>();auto* c=channels_[i].get();c->index=i;
+        c->startup.setSingleShot(true);c->startup.setInterval(8000);
+        connect(&c->startup,&QTimer::timeout,this,[this,c]{failProtocol(*c,"Listener could not start; reconnect to retry.");});
+        connect(&c->process,&QProcess::readyReadStandardOutput,this,[this,c]{readOutput(*c);});
+        connect(&c->process,&QProcess::readyReadStandardError,this,[c]{c->process.readAllStandardError();});
+        connect(&c->process,&QProcess::errorOccurred,this,[this,c](QProcess::ProcessError error){
+            if(!c->stopping && error==QProcess::FailedToStart)failProtocol(*c,"Could not launch listener.");
         });
+        connect(&c->process,qOverload<int,QProcess::ExitStatus>(&QProcess::finished),this,[this,c](int,QProcess::ExitStatus){
+            if(!c->stopping)failProtocol(*c,"Listener stopped; reconnect to retry.");
+        });
+    }
 }
-
-StylusInput::~StylusInput() {
-    disconnect(&process_, nullptr, this, nullptr);
-    stop();
+StylusInput::~StylusInput(){for(auto& c:channels_)disconnect(&c->process,nullptr,this,nullptr);stop();}
+void StylusInput::setStatus(const QString& value){if(status_==value)return;status_=value;emit statusChanged();}
+void StylusInput::refreshStatus(){
+    setStatus(QStringLiteral("Integrated / MPP: %1\nExternal / generic: %2").arg(channels_[0]->status,channels_[1]->status));
+    emit readingsChanged();
 }
-
-void StylusInput::setStatus(const QString& value) {
-    if (status_==value) return;
-    status_=value; emit statusChanged();
+QVariantList StylusInput::readings() const {
+    QVariantList result;
+    for(const auto& c:channels_){
+        QVariantMap row{{"name",c->index==0?"Integrated / MPP":"External / generic"},{"status",c->status},
+            {"packets",QVariant::fromValue(c->sequence)},{"tipDowns",QVariant::fromValue(c->tipDowns)},{"tipUps",QVariant::fromValue(c->tipUps)}};
+        if(c->sample){const auto& v=c->sample->values;
+            row["inRange"]=bool(v[4]);row["tip"]=bool(v[3]);row["barrel"]=bool(v[2]);row["invert"]=bool(v[1]);row["eraser"]=bool(v[0]);
+            row["x"]=v[10];row["y"]=v[11];row["pressure"]=v[12];row["tiltX"]=v[8];row["tiltY"]=v[9];
+        }
+        result<<row;
+    }
+    return result;
 }
-
-void StylusInput::setEnabled(bool value) {
-    if (enabled_==value) return;
-    enabled_=value; emit enabledChanged(); emit settingsChanged();
-    edges_.reset();
-    if (!enabled_) stopHelper();
-    else if (started_) start();
-    else setStatus(QStringLiteral("Pen side button is enabled; input has not started."));
+void StylusInput::setEnabled(bool value){
+    if(enabled_==value)return;
+    enabled_=value;emit enabledChanged();emit settingsChanged();
+    if(!enabled_)stopHelper();else if(started_)start();else setStatus("Pen input is enabled; input has not started.");
 }
-
-void StylusInput::setSelectedSideButton(int button) {
-    if ((button!=1 && button!=2) || selectedSideButton_==button) return;
-    selectedSideButton_=button; edges_.reset();
-    // The helper sends state changes, so the cached sample remains its current
-    // state. Use it only as a baseline; selecting a held button never invokes.
-    if (ready_ && latestButtons_) edges_.update(*latestButtons_,selectedSideButton_);
-    emit selectedSideButtonChanged(); emit settingsChanged();
+void StylusInput::setSelectedSideButton(int button){
+    if((button!=1&&button!=2)||selectedSideButton_==button)return;
+    selectedSideButton_=button;
+    for(auto& c:channels_){c->edges.reset();if(c->sample)c->edges.update(c->sample->buttons(),button);}
+    emit selectedSideButtonChanged();emit settingsChanged();
 }
-
-void StylusInput::start() {
-    started_=true;
-    if (!enabled_ || process_.state()!=QProcess::NotRunning) return;
-    edges_.reset(); latestButtons_.reset(); pending_.clear(); sequence_=0; ready_=false; stopping_=false;
+void StylusInput::start(){
+    started_=true;if(!enabled_)return;
 #ifdef Q_OS_WIN
-    process_.setProgram(QCoreApplication::applicationFilePath());
-    process_.setArguments({QStringLiteral("--pen-helper")});
-    process_.setWorkingDirectory(QCoreApplication::applicationDirPath());
-    process_.setProcessChannelMode(QProcess::SeparateChannels);
-    process_.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* args) {
-        args->flags |= CREATE_NO_WINDOW;
-        // The supplied HID DLL calls SW_SHOW then SW_HIDE for its worker sink.
-        // Override that first ShowWindow through process startup information;
-        // preserve Qt's STARTF_USESTDHANDLES so the IPC pipes remain intact.
-        args->startupInfo->dwFlags |= STARTF_USESHOWWINDOW;
-        args->startupInfo->wShowWindow = SW_HIDE;
-    });
-    setStatus(QStringLiteral("Starting pen input…"));
-    startupTimer_.start(); process_.start();
+    for(auto& owned:channels_){auto& c=*owned;
+        if(c.process.state()!=QProcess::NotRunning)continue;
+        c.edges.reset();c.sample.reset();c.pending.clear();c.sequence=c.tipDowns=c.tipUps=0;c.ready=false;c.stopping=false;
+        c.process.setProgram(QCoreApplication::applicationFilePath());
+        c.process.setArguments({"--pen-helper",c.index==1?"--generic-pen":"--integrated-pen"});
+        c.process.setWorkingDirectory(QCoreApplication::applicationDirPath());
+        c.process.setProcessChannelMode(QProcess::SeparateChannels);
+        c.process.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* args){
+            args->flags|=CREATE_NO_WINDOW;args->startupInfo->dwFlags|=STARTF_USESHOWWINDOW;args->startupInfo->wShowWindow=SW_HIDE;
+        });
+        c.status="Starting…";c.startup.start();c.process.start();
+    }
+    refreshStatus();
 #else
-    setStatus(QStringLiteral("Pen input simulation: native side buttons require Windows."));
+    setStatus("Pen input simulation: native pen data requires Windows.");
 #endif
 }
-
-void StylusInput::stopHelper() {
-    stopping_=true; startupTimer_.stop(); edges_.reset(); latestButtons_.reset(); ready_=false; pending_.clear();
-    if (process_.state()!=QProcess::NotRunning) {
-        // No safe unregister ABI exists: end the entire isolated process.
-        process_.kill(); process_.waitForFinished(1500);
-    }
-    setStatus(QStringLiteral("Pen side button is off."));
+void StylusInput::stopChannel(Channel& c){
+    c.stopping=true;c.startup.stop();c.ready=false;c.edges.reset();c.sample.reset();c.pending.clear();
+    if(c.process.state()!=QProcess::NotRunning){c.process.kill();c.process.waitForFinished(1500);}
 }
-
-void StylusInput::stop() { started_=false; stopHelper(); }
-
-void StylusInput::failProtocol(const QString& reason) {
-    stopHelper(); setStatus(QStringLiteral("Pen input error: ")+reason);
+void StylusInput::stopHelper(){
+    for(auto& c:channels_){stopChannel(*c);c->status="Off";}
+    emit inputLost();emit readingsChanged();setStatus("Pen input is off.");
 }
-
-void StylusInput::readOutput() {
-    const auto output=process_.readAllStandardOutput();
-    if (stopping_) return; // waitForFinished can deliver readyRead reentrantly.
-    pending_+=output;
-    if (pending_.size()>65536) { failProtocol(QStringLiteral("Invalid helper output.")); return; }
-    while (pending_.contains('\n')) {
-        const auto newline=pending_.indexOf('\n');
-        const auto line=pending_.left(newline); pending_.remove(0,newline+1);
-        if (line.size()>256) { failProtocol(QStringLiteral("Invalid helper output.")); return; }
+void StylusInput::stop(){started_=false;stopHelper();}
+void StylusInput::failProtocol(Channel& c,const QString& reason){
+    stopChannel(c);c.status=reason;emit inputLost();refreshStatus();
+}
+void StylusInput::readOutput(Channel& c){
+    const auto output=c.process.readAllStandardOutput();if(c.stopping)return;
+    c.pending+=output;
+    if(c.pending.size()>65536){failProtocol(c,"Invalid listener output.");return;}
+    while(c.pending.contains('\n')){
+        const auto newline=c.pending.indexOf('\n');auto line=c.pending.left(newline);c.pending.remove(0,newline+1);
+        if(line.endsWith('\r'))line.chop(1);
+        if(line.size()>256){failProtocol(c,"Invalid listener output.");return;}
         const auto fields=line.split(' ');
-        if (line=="TPP1 READY" && !ready_) {
-            ready_=true; startupTimer_.stop(); edges_.reset(); latestButtons_.reset();
-            setStatus(QStringLiteral("Pen input ready. Hover, then press the selected side button."));
-        } else if (fields.size()==5 && fields[0]=="TPP1" && fields[1]=="DATA" && ready_) {
-            bool validSequence=false, validMask=false, validRange=false;
-            const quint64 sequence=fields[2].toULongLong(&validSequence);
-            const int mask=fields[3].toInt(&validMask), inRange=fields[4].toInt(&validRange);
-            if (!validSequence || sequence<=sequence_ || !validMask || mask<0 || mask>3 ||
-                !validRange || (inRange!=0 && inRange!=1)) {
-                failProtocol(QStringLiteral("Invalid helper packet.")); return;
-            }
-            sequence_=sequence;
-            const StylusButtons buttons{bool(mask&1),bool(mask&2),bool(inRange)};
-            latestButtons_=buttons;
-            if (enabled_ && edges_.update(buttons,selectedSideButton_)) emit sideButtonPressed();
-        } else if (fields.size()>=3 && fields[0]=="TPP1" && fields[1]=="ERROR") {
-            QString detail=QStringLiteral("The HID helper could not initialize.");
-            if (fields[2]=="load") detail=QStringLiteral("The pen HID DLL or its Microsoft C++ runtime is missing from lib.");
-            else if (fields[2]=="abi") detail=QStringLiteral("The pen HID DLL has an unsupported interface.");
-            else if (fields[2]=="registration") detail=QStringLiteral("The HID DLL could not register pen input.");
-            else if (fields[2]=="packet") detail=QStringLiteral("The HID DLL returned an invalid packet; input has stopped.");
-            failProtocol(detail); return;
-        } else { failProtocol(QStringLiteral("Invalid helper protocol.")); return; }
+        if(line=="TPP2 READY"&&!c.ready){
+            c.ready=true;c.startup.stop();c.status="Listening; waiting for pen data";refreshStatus();
+        }else if(fields.size()==4&&fields[0]=="TPP2"&&fields[1]=="DATA"&&c.ready){
+            bool ok=false;const auto sequence=fields[2].toULongLong(&ok);const auto sample=StylusSample::fromHex(fields[3]);
+            if(!ok||sequence<=c.sequence||!sample){failProtocol(c,"Invalid pen packet.");return;}
+            c.sequence=sequence;
+            // Baseline the first sample; a pen already down when enabling input
+            // must not manufacture a fresh drawing stroke or a side-button press.
+            const bool down=sample->tip()&&sample->inRange();
+            const bool changed=c.sample && down!=(c.sample->tip()&&c.sample->inRange());
+            const bool left=c.sample && c.sample->inRange()&&!sample->inRange();
+            c.sample=sample;
+            if(changed){if(down)++c.tipDowns;else ++c.tipUps;emit tipChanged(quintptr(c.index+1),down);}
+            if(left)emit proximityLeft();
+            emit sampleReceived(c.index,*sample);
+            c.status=sample->inRange()?(down?"Pen touching":"Pen hovering"):"Pen out of range";
+            if(!readingsTimer_.isActive())readingsTimer_.start();
+            if(enabled_&&c.edges.update(sample->buttons(),selectedSideButton_))emit sideButtonPressed();
+        }else if(fields.size()>=3&&fields[0]=="TPP2"&&fields[1]=="ERROR"){
+            failProtocol(c,fields[2]=="registration"?"No compatible pen listener; reconnect after connecting the device.":"Pen DLL error: "+QString::fromLatin1(fields[2]));return;
+        }else{failProtocol(c,"Invalid listener protocol.");return;}
     }
 }
 
@@ -175,7 +183,10 @@ struct HelperState {
     HANDLE output=INVALID_HANDLE_VALUE;
     std::uint64_t sequence=0;
     bool healthy=true;
-    std::optional<StylusButtons> previous;
+    std::optional<StylusSample> previous;
+    std::array<std::byte,64> pending{};
+    bool motionPending=false;
+    ULONGLONG lastSent=0;
 };
 
 bool writeLine(HANDLE output, const char* data) {
@@ -185,6 +196,13 @@ bool writeLine(HANDLE output, const char* data) {
     return WriteFile(output,data,static_cast<DWORD>(length),&written,nullptr) && written==length;
 }
 
+void sendSample(HelperState& state){
+    char hex[129]{};constexpr char digits[]="0123456789abcdef";
+    for(unsigned i=0;i<64;++i){const auto b=std::to_integer<unsigned char>(state.pending[i]);hex[2*i]=digits[b>>4];hex[2*i+1]=digits[b&15];}
+    char line[192];std::snprintf(line,sizeof line,"TPP2 DATA %llu %s\n",static_cast<unsigned long long>(++state.sequence),hex);
+    state.healthy=writeLine(state.output,line);state.lastSent=GetTickCount64();state.motionPending=false;
+}
+
 LRESULT CALLBACK penWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     auto* state=reinterpret_cast<HelperState*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
     if (message==WM_NCCREATE) {
@@ -192,33 +210,29 @@ LRESULT CALLBACK penWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lP
         SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(create->lpCreateParams));
         return TRUE;
     }
+    if(state && message==WM_TIMER && wParam==1){if(state->motionPending)sendSample(*state);return 0;}
     if (state && message==state->message) {
         void* allocation=reinterpret_cast<void*>(wParam);
         // The observed contract is GetProcessHeap/HeapFree ownership. Check it
         // and the allocation size before any dereference or release.
         if (!allocation || !HeapValidate(state->heap,0,allocation)) {
-            state->healthy=false; writeLine(state->output,"TPP1 ERROR packet\n"); return 0;
+            state->healthy=false; writeLine(state->output,"TPP2 ERROR packet\n"); return 0;
         }
         const SIZE_T size=HeapSize(state->heap,0,allocation);
         std::array<std::byte,64> copy{};
         if (size>=copy.size() && size!=SIZE_T(-1)) std::memcpy(copy.data(),allocation,copy.size());
         const bool released=HeapFree(state->heap,0,allocation)!=FALSE;
         if (size<copy.size() || size==SIZE_T(-1) || !released) {
-            state->healthy=false; writeLine(state->output,"TPP1 ERROR packet\n"); return 0;
+            state->healthy=false; writeLine(state->output,"TPP2 ERROR packet\n"); return 0;
         }
-        const auto buttons=StylusButtons::decode(copy);
-        if (!buttons) { state->healthy=false; writeLine(state->output,"TPP1 ERROR packet\n"); return 0; }
-        // Every DLL allocation was released above. Only first sample or state
-        // changes cross IPC, so motion/pressure sampling cannot flood the GUI.
-        if (state->previous && state->previous->barrel==buttons->barrel &&
-            state->previous->invert==buttons->invert && state->previous->inRange==buttons->inRange)
-            return 0;
-        state->previous=buttons;
-        char line[96];
-        const unsigned mask=(buttons->barrel?1u:0u)|(buttons->invert?2u:0u);
-        std::snprintf(line,sizeof line,"TPP1 DATA %llu %u %u\n",
-            static_cast<unsigned long long>(++state->sequence),mask,buttons->inRange?1u:0u);
-        state->healthy=writeLine(state->output,line);
+        const auto sample=StylusSample::decode(copy);
+        if(!sample){state->healthy=false;writeLine(state->output,"TPP2 ERROR packet\n");return 0;}
+        bool transition=!state->previous;
+        if(state->previous)for(unsigned i=0;i<5;++i)transition|=state->previous->values[i]!=sample->values[i];
+        state->previous=sample;state->pending=copy;state->motionPending=true;
+        // Coalesce analog motion only. Contact, proximity and button edges are
+        // never delayed or dropped; the timer flushes the final motion sample.
+        if(transition || GetTickCount64()-state->lastSent>=16)sendSample(*state);
         return 0;
     }
     return DefWindowProcW(hwnd,message,wParam,lParam);
@@ -257,13 +271,13 @@ HANDLE openEditorParent(const std::wstring& ownPath) {
 }
 #endif
 
-int StylusInput::runHelper() {
+int StylusInput::runHelper(bool generic) {
 #ifdef Q_OS_WIN
     const HANDLE output=GetStdHandle(STD_OUTPUT_HANDLE);
     const auto path=executablePath();
-    if (path.empty()) { writeLine(output,"TPP1 ERROR path\n"); return 2; }
+    if (path.empty()) { writeLine(output,"TPP2 ERROR path\n"); return 2; }
     const HANDLE parent=openEditorParent(path);
-    if (!parent) { writeLine(output,"TPP1 ERROR parent\n"); return 2; }
+    if (!parent) { writeLine(output,"TPP2 ERROR parent\n"); return 2; }
     const auto slash=path.find_last_of(L"\\/");
     if (slash==std::wstring::npos) { CloseHandle(parent); return 2; }
     const auto dllPath=path.substr(0,slash)+
@@ -273,7 +287,7 @@ int StylusInput::runHelper() {
     // neither the current working directory nor PATH participates.
     const HMODULE dll=LoadLibraryExW(dllPath.c_str(),nullptr,
         LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_APPLICATION_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32);
-    if (!dll) { writeLine(output,"TPP1 ERROR load\n"); CloseHandle(parent); return 3; }
+    if (!dll) { writeLine(output,"TPP2 ERROR load\n"); CloseHandle(parent); return 3; }
     using GetMessageNumber=std::uintptr_t (WINAPI*)();
     using RegisterReceiver=std::uintptr_t (WINAPI*)(HWND,int,int,int);
     const auto getMessage=reinterpret_cast<GetMessageNumber>(GetProcAddress(dll,
@@ -281,28 +295,29 @@ int StylusInput::runHelper() {
     const auto registerReceiver=reinterpret_cast<RegisterReceiver>(GetProcAddress(dll,
         sizeof(void*)==8?"RegisterReceiveSurfacePenSlimDataEvents":"_RegisterReceiveSurfacePenSlimDataEvents@16"));
     if (!getMessage || !registerReceiver) {
-        writeLine(output,"TPP1 ERROR abi\n"); CloseHandle(parent); return 4;
+        writeLine(output,"TPP2 ERROR abi\n"); CloseHandle(parent); return 4;
     }
     const auto number=getMessage();
     if (number<0xC000 || number>0xFFFF) {
-        writeLine(output,"TPP1 ERROR abi\n"); CloseHandle(parent); return 4;
+        writeLine(output,"TPP2 ERROR abi\n"); CloseHandle(parent); return 4;
     }
     HelperState state{static_cast<UINT>(number),GetProcessHeap(),output,0,true,std::nullopt};
     const HINSTANCE instance=GetModuleHandleW(nullptr);
     const wchar_t* windowClass=L"TabletPro.IsolatedPenInput.v1";
     WNDCLASSW klass{}; klass.lpfnWndProc=penWindowProc; klass.hInstance=instance; klass.lpszClassName=windowClass;
-    if (!RegisterClassW(&klass)) { writeLine(output,"TPP1 ERROR window\n"); CloseHandle(parent); return 5; }
+    if (!RegisterClassW(&klass)) { writeLine(output,"TPP2 ERROR window\n"); CloseHandle(parent); return 5; }
     // Hidden top-level sink matches A_ScriptHwnd; never shown or focused.
     const HWND sink=CreateWindowExW(WS_EX_NOACTIVATE|WS_EX_TOOLWINDOW,windowClass,L"",WS_POPUP,
         0,0,0,0,nullptr,nullptr,instance,&state);
-    if (!sink) { writeLine(output,"TPP1 ERROR window\n"); CloseHandle(parent); return 5; }
+    if (!sink) { writeLine(output,"TPP2 ERROR window\n"); CloseHandle(parent); return 5; }
     // Static inspection confirms zero success, HRESULT-like failure. This is
     // not a subscription handle despite the original AHK variable name.
-    const auto result=registerReceiver(sink,1,0,0);
+    const auto result=registerReceiver(sink,0,1,generic?1:0);
     if (static_cast<std::uint32_t>(result)!=0) {
-        writeLine(output,"TPP1 ERROR registration\n"); ExitProcess(6);
+        writeLine(output,"TPP2 ERROR registration\n"); ExitProcess(6);
     }
-    if (!writeLine(output,"TPP1 READY\n")) ExitProcess(7);
+    if(!SetTimer(sink,1,16,nullptr)){writeLine(output,"TPP2 ERROR timer\n");ExitProcess(7);}
+    if (!writeLine(output,"TPP2 READY\n")) ExitProcess(7);
     // Parent process is a wait source, so parent crashes cannot orphan a listener.
     while (state.healthy) {
         const DWORD wait=MsgWaitForMultipleObjects(1,&parent,FALSE,INFINITE,QS_ALLINPUT);

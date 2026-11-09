@@ -34,6 +34,9 @@ StudioController::StudioController(QObject* parent,const QString& configDirector
         QSettings prefs;prefs.setValue("penInputEnabled",stylus_.enabled());prefs.setValue("penSideButton",stylus_.selectedSideButton());
     });
     connect(&stylus_,&StylusInput::sideButtonPressed,this,[this]{runtime_.releaseModifiers();emit showRuntimeRequested(platform_.captureForegroundTarget(),true);});
+    connect(&stylus_,&StylusInput::tipChanged,&platform_,&WindowPlatform::observeStylusTip);
+    connect(&stylus_,&StylusInput::proximityLeft,&platform_,&WindowPlatform::finishPenHover);
+    connect(&stylus_,&StylusInput::inputLost,&runtime_,&MenuSession::releaseModifiers);
 }
 const radial::Node* StudioController::selectedNode() const {const auto i=draft_.nodes.find(selected_.toStdString());return i==draft_.nodes.end()?nullptr:&i->second;}
 radial::Node* StudioController::selectedNode() {const auto i=draft_.nodes.find(selected_.toStdString());return i==draft_.nodes.end()?nullptr:&i->second;}

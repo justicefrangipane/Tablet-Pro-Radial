@@ -67,12 +67,14 @@ public:
     Q_INVOKABLE void parentPointerReleased(int pointerId,qreal x,qreal y);
     Q_INVOKABLE void parentBack();
     void finishNextStroke();
+    void finishPenHover();
 signals:
     void geometryChanged();
     void stateChanged();
     void preferencesChanged();
     void cue(const QString& name);
     void actionReported(const QString& description);
+    void selectionCommitted();
 private:
     radial::Profile profile_;
     std::optional<radial::Profile> pending_;
@@ -98,7 +100,7 @@ private:
     bool pendingDispatch_ = false;
     std::optional<int> modifierPointer_;
     QString modifierKey_, modifierNode_, lastTapKey_;
-    QStringList heldModifiers_, latchedModifiers_, armedModifiers_;
+    QStringList heldModifiers_, latchedModifiers_, armedModifiers_, hoverModifiers_;
     QPointF modifierStart_;
     QElapsedTimer modifierClock_;
     qint64 pressedAt_ = 0, lastTapAt_ = -1000;
@@ -106,6 +108,7 @@ private:
     void moveModifierPointer(int pointerId,qreal x,qreal y);
     bool beginModifier(const radial::Node& node, int pointerId, QPointF point, bool fromFan = false);
     bool holdModifier(const QString& key, bool held);
+    bool armHoverModifier();
     QString modifierState(const radial::Node& node) const;
     QString pendingDescription_;
     std::size_t previousDepth_ = 0;

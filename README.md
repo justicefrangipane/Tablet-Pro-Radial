@@ -30,16 +30,19 @@ Use **Ctrl+Alt+Space** or your configured pen button to show or hide the menu. T
 
 Save your custom menu with **Save test radial…**, and use **Apply draft** to activate editor changes. See [Windows quick start](docs/RUN-WINDOWS.md) and [tray and updates](docs/TRAY-AND-UPDATES.md).
 
+**Pen trigger (local candidate 0.3.18):** The barrel button opens the radial by default. Change it in the **Pen trigger** row below the editor toolbar, choosing **Barrel button (default)** or **Invert / second button**. The switch turns pen-button input on or off, and choices save automatically. **Pen settings** opens live diagnostics. **Ctrl+Alt+Space** remains available.
+
 The main default menu contains **Brush, Eraser, Alt, Ctrl, Shift, and Tools**. The Tools group retains selection, color, text, and editing shortcuts.
 
-**Parent menus (0.3.14):** hold any parent button for **300 ms** to open a full child radial at the latest pen-tip position, or **slide out** to open at your finger. Release over a child to choose it; lifting in the center leaves the menu open for a separate tap. The pen can select while the launching finger remains down. Tap the center to go back through nested parents, or press Esc to close. Existing parent buttons work this way in radial and docked mode. Menus stay inside the current overlay screen; if no recent pen position is available, a hold opens near the parent instead.
+**Parent menus (local candidate 0.3.17):** **slide outward** for the familiar child fan, then release over a child to choose it; a neutral release cancels. **Hold for 300 ms** to open a full child radial at the latest pen-tip position. The pen can select while the launching finger remains down. Lifting that finger leaves the radial open for a separate tap. Tap the radial center to go back through nested parents, or press Esc to close. Existing parent buttons support both gestures in radial and docked mode. Menus stay inside the current overlay screen; if no recent pen position is available, a hold opens near the parent instead.
 
 In **Edit**, select an action and choose **Make parent** to keep it as the first child of a new menu. Choose **Add child** to fill the next free slot, or **Add parent** to create another level. The six named child slots open their inspectors directly. Choose **Apply draft** when ready. These changes preserve customized menus and support Undo/Redo.
 
 **Drag into a parent (0.3.15):** drag any button onto a parent in the menu list, or choose **Arrange buttons** and drag in the radial/docked preview. Green feedback means the drop is valid. The button moves into the first empty child slot; an existing parent moves with its whole child tree. The original slot stays empty. Drag near a list edge to scroll, press Esc to cancel, and use Undo to reverse a move. Full parents and loops are refused. If moving the last child leaves an empty parent, add a child or remove that empty parent before Apply. **Done arranging** restores the preview's hold/slide gestures.
 
-- **Floating radial:** tap a modifier to hold it for the next pen stroke. A circled **1** marks the armed state. The selection tap does not consume it; lifting the next stroke releases it. Tap again to cancel. Multiple modifiers can share the next stroke.
-- **Docked rail:** hold for a momentary modifier, drag out to lock it until lifting, or double-tap to keep it on until tapped again. A small lock marks the persistent state.
+- **Floating radial:** tap a modifier to hold it for the next pen stroke. Selecting it closes the wheel while keeping the modifier armed; lifting the next drawing stroke releases it. The selecting tap does not consume that stroke.
+- **Drag out, in either layout:** the modifier stays on through tip lifts until the pen leaves hover range. A small lock marks the active state.
+- **Docked rail:** hold for a momentary modifier or double-tap to keep it on until tapped again. Selecting actions keeps the dock visible; choosing a child closes its menu.
 
 Held keys release when the menu is hidden, its pen button or shortcut is pressed, the editor opens, the target app changes, or Radial exits. They are not saved across restarts. Existing customized menus are preserved; **Use new default menu** loads the new layout as an undoable draft. Unchanged old defaults upgrade automatically.
 
@@ -67,7 +70,7 @@ The docked **Continuous rail** keeps the tools and settings inside one 44 px hou
 ## What is implemented
 
 - Six fixed root slots, clear Alt/Ctrl/Shift labels, and nested groups with six fixed child slots. Removing a button leaves its slot empty; other gestures retain their positions.
-- Hold a parent for 300 ms to open at the pen tip, or slide out to open a full circular child menu at the contact. Independent pen/touch ownership, neutral center, angular gaps, nested Back, and cancellation protect selection.
+- Hold a parent for 300 ms to open a full radial at the pen tip, or slide out for its child fan. Independent pen/touch ownership, neutral release, angular gaps, nested Back, and cancellation protect selection.
 - Quiet Gravity: wedge surfaces and their icons break into small shaded voxels; light collects at the left rail, fragments travel toward each destination, and the reconstructed buttons settle with a restrained snap. Undocking reverses the same path.
 - A separate editor with a menu hierarchy, icon/behavior inspector, root/group insertion, slot movement, subtree removal, undo/redo, Open, Save as, Discard, and Apply.
 - Independent draft preview and applied runtime. Preview gestures report their action inside the editor. Apply validates and atomically persists a new profile; an active gesture finishes against its original snapshot.
