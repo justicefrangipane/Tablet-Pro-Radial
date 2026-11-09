@@ -8,9 +8,9 @@ A native Windows radial menu and editor with pen-button invocation, a docked rai
 
 Open the latest release and download the file ending in **Windows-x64-Setup.exe**. Run it on each computer. Setup installs for your Windows account and includes the Qt runtime; administrator access and a separate Qt installation are not required. The installer is currently unsigned.
 
-The latest release is **[0.3.15](https://github.com/justicefrangipane/Tablet-Pro-Radial/releases/tag/v0.3.15)**, published November 6, 2026.
+The latest release is **[0.3.18](https://github.com/justicefrangipane/Tablet-Pro-Radial/releases/tag/v0.3.18)**, published November 9, 2026.
 
-Version **0.3.15** adds parent menus at your pen or finger and drag-and-drop parent/child editing. The Windows installer, matching source archive, and checksums are available in the release above.
+Version **0.3.18** adds visible pen-trigger controls, modifier locks that last until the pen leaves hover range, and automatic closing of floating menus after selection. The docked rail stays visible. The Windows installer, matching source archive, and checksums are available in the release above.
 
 ## Get updates
 

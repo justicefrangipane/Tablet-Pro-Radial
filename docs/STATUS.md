@@ -1,4 +1,4 @@
-# Local candidate: 0.3.18
+# Current release: 0.3.18
 
 The editor exposes a Pen trigger row below its toolbar: an enable switch, an explicitly named Barrel button (default) / Invert or second button choice, the existing keyboard shortcut, and Pen settings for diagnostics. Selection and enable state use the existing persisted preferences and take effect immediately; saved custom selections are retained across restarts. The fresh-install defaults remain enabled with barrel selected. The pen setup dialog uses the same unambiguous labels.
 
@@ -8,7 +8,7 @@ Dragging out of a modifier now arms a separate hover lifetime as soon as the dra
 
 Successful action selection and modifier selection dismiss the floating overlay after gesture cleanup. A narrowly scoped selection-dismissal flag preserves held modifiers through both QML and native window-hide handlers; explicit Hide and other cancellation paths still release them. Delayed pointer cancellation from a still-held parent-launch finger cannot cancel a completed selection. The dock stays visible and child menus close back to it. Tests exercise these paths through QML and real Windows key state; physical interaction acceptance remains a user-device check.
 
-Not published. Exact release notes require Justice or Bassem approval before uploads or update-feed changes.
+Published November 9, 2026 after Justice approved the exact release notes (SHA-256 `3f4d7dbae4377be9760eae335d0d2482c3d49c8ca3ef46074a489f1de3d306e7`). Release tag `v0.3.18` targets commit `7a2b43857d880c207f113041ea3c506cde32b815`; all three uploaded assets match their local SHA-256 digests. GitHub's Portable core check passed. The real application updater discovers 0.3.18 from 0.3.15, downloads and verifies the installer, and reports 0.3.18 as up to date. Future updates still require approval of their exact notes.
 
 # Previous local candidate: 0.3.17
 
