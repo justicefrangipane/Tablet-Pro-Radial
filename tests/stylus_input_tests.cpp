@@ -5,6 +5,7 @@
 #include <iostream>
 #include <QTimer>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QThread>
 #include <QSet>
 
@@ -27,6 +28,19 @@ int main(int argc,char** argv) {
         std::array<std::byte,64> data{};quint64 sequence=0;
         const auto send=[&]{std::cout<<"TPP2 DATA "<<++sequence<<" "<<QByteArray(reinterpret_cast<const char*>(data.data()),64).toHex().constData()<<'\n'<<std::flush;};
         std::cout<<"TPP2 READY\n"<<std::flush;
+        const auto gesture=qEnvironmentVariable("TABLETPRO_TEST_BUTTON_GESTURE");
+        if(!gesture.isEmpty()){
+            field(data,16,1);send();
+            if(generic || gesture=="duplicate"){
+                const auto offset=gesture=="invert"?4:8;
+                QTimer::singleShot(30,&app,[&,offset]{field(data,offset,1);send();});
+                if(gesture=="range")QTimer::singleShot(130,&app,[&]{field(data,16,0);send();});
+                if(gesture=="failure")QTimer::singleShot(130,&app,[&]{std::cout<<"TPP2 ERROR registration\n"<<std::flush;});
+                const int release=(gesture=="tap"||gesture=="duplicate")?100:900;
+                QTimer::singleShot(release,&app,[&,offset]{field(data,offset,0);send();});
+            }
+            QTimer::singleShot(10000,&app,&QCoreApplication::quit);return app.exec();
+        }
         field(data,16,1);field(data,32,quint32(qint32(-37)));send();
         if(qEnvironmentVariableIsSet("TABLETPRO_TEST_BAD_PACKET")&&!generic){std::cout<<"TPP2 DATA 2 abc\n"<<std::flush;}
         else{
@@ -130,6 +144,34 @@ int main(int argc,char** argv) {
     require(waitFor([&]{return ups==2&&input.status().contains("Invalid pen packet");}),"malformed integrated channel fails without disabling generic channel");
     require(invoked==before+1&&sources.size()==1,"healthy channel continues independently after protocol failure");
     input.stop();qunsetenv("TABLETPRO_TEST_BAD_PACKET");
+    const auto wait=[](int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();};
+    for(const auto* mode:{"tap","hold","invert","duplicate","range","failure","disable","selection","stop"}){
+        qputenv("TABLETPRO_TEST_BUTTON_GESTURE",mode);
+        StylusInput gesture;gesture.setEnabled(true);if(QString(mode)=="invert")gesture.setSelectedSideButton(2);
+        int pressed=0,tapped=0,held=0;
+        QElapsedTimer duration;
+        QObject::connect(&gesture,&StylusInput::sideButtonDown,[&]{++pressed;duration.start();});
+        QObject::connect(&gesture,&StylusInput::sideButtonPressed,[&]{++tapped;});
+        QObject::connect(&gesture,&StylusInput::sideButtonHeld,[&]{require(duration.elapsed()>=StylusInput::SideButtonHoldMs,"hold cannot fire before 500 ms");++held;});
+        gesture.start();require(waitFor([&]{return pressed>0;}),"real helper button-down starts classification");
+        require(tapped==0&&held==0,"press alone does not hide or switch the menu");
+        const QString scenario(mode);
+        if(scenario=="disable")gesture.setEnabled(false);
+        if(scenario=="selection")gesture.setSelectedSideButton(2);
+        if(scenario=="stop")gesture.stop();
+        if(scenario=="tap" || scenario=="duplicate"){
+            require(waitFor([&]{return tapped==1;}),"short press invokes on release");wait(550);
+            require(pressed==1&&tapped==1&&held==0,"short press and duplicate channels never generate a long press");
+        }else if(scenario=="hold" || scenario=="invert"){
+            require(waitFor([&]{return held==1;}),"selected barrel or invert hold invokes mode switching");
+            require(tapped==0,"long press does not also invoke a short press");wait(500);
+            require(held==1&&tapped==0,"holding and releasing after long press never toggles visibility");
+        }else{
+            wait(1000);require(held==0&&tapped==0,"range exit, listener failure, disable, selection change and stop cancel pending gestures");
+        }
+        gesture.stop();
+    }
+    qunsetenv("TABLETPRO_TEST_BUTTON_GESTURE");
 #endif
     std::cout<<"Stylus input: "<<checks<<" packet, edge, cancellation and lifecycle checks passed.\n";
 }

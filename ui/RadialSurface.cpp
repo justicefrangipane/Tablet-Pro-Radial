@@ -1,4 +1,5 @@
 #include "RadialSurface.h"
+#include "DockLayout.h"
 #include "core/gesture.h"
 
 #include <QMouseEvent>
@@ -245,7 +246,7 @@ void halo(Colors &v,QPointF center,double radius,QColor tint,double alpha) {
         }
     }
 }
-void textureQuad(Textures &v,QPointF center,double width,double height,double rotation,QRectF uv,QSize atlasSize) {
+void textureQuad(Textures &v,QPointF center,double width,double height,double rotation,QRectF uv,QSizeF atlasSize) {
     const double co=std::cos(rotation),si=std::sin(rotation);
     std::array<QPointF,4> p={QPointF(-width/2,-height/2),{width/2,-height/2},{width/2,height/2},{-width/2,height/2}};
     std::array<QPointF,4> u={uv.topLeft(),uv.topRight(),uv.bottomRight(),uv.bottomLeft()};
@@ -301,16 +302,34 @@ struct RadialSurface::State {
     std::vector<ChildParticle> childParticles;
     std::vector<double> ends;
     QImage atlas;
+    qreal rasterScale = 1;
+    QSizeF atlasLayoutSize() const { return QSizeF(atlas.size())/rasterScale; }
+    int alphaAt(qreal x,qreal y) const {
+        return qAlpha(atlas.pixel(std::clamp(int((x+.5)*rasterScale),0,atlas.width()-1),
+                                  std::clamp(int((y+.5)*rasterScale),0,atlas.height()-1)));
+    }
     bool railStyle = false;
-    void rebuild(const QVariantList &roots,const QVariantList &childList,const QVariantList &retiringList,bool glassEnabled,bool continuousRail,bool bronzeTheme) {
+    void moveRoots(const QVariantList& roots){
+        std::vector<QPointF> sources,destinations;
+        for(int i=0;i<int(buttons.size());++i){
+            auto next=readButton(roots[i],i);const auto& previous=buttons[i];
+            sources.push_back(next.radialCenter-previous.radialCenter);destinations.push_back(next.dock-previous.dock);
+            next.sourceAtlas=previous.sourceAtlas;next.targetAtlas=previous.targetAtlas;buttons[i]=next;
+        }
+        for(auto& p:particles){p.source+=sources[p.tool];p.destination+=destinations[p.tool];}
+    }
+    void rebuild(const QVariantList &roots,const QVariantList &childList,const QVariantList &retiringList,bool glassEnabled,bool continuousRail,bool bronzeTheme,qreal scale) {
+        rasterScale=scale;
         railStyle=continuousRail;
         buttons.clear();children.clear();retiring.clear();particles.clear();childParticles.clear();ends.clear();
         for(int i=0;i<roots.size();i++)buttons.push_back(readButton(roots[i],i));
         for(int i=0;i<childList.size();i++)children.push_back(readChild(childList[i],i));
         for(int i=0;i<retiringList.size();i++)retiring.push_back(readChild(retiringList[i],i));
         const int atlasSlots=std::max(1,int(buttons.size()*2+children.size()+retiring.size())),cols=4;
-        atlas=QImage(cols*spriteSize,((atlasSlots+cols-1)/cols)*spriteSize,QImage::Format_RGBA8888_Premultiplied);atlas.fill(Qt::transparent);
-        QPainter ap(&atlas);ap.setRenderHint(QPainter::Antialiasing);
+        // Keep all layout/animation coordinates logical, but draw the original
+        // paths and glyphs at the target display's physical pixel density.
+        atlas=QImage(qCeil(cols*spriteSize*rasterScale),qCeil(((atlasSlots+cols-1)/cols)*spriteSize*rasterScale),QImage::Format_RGBA8888_Premultiplied);atlas.fill(Qt::transparent);
+        QPainter ap(&atlas);ap.scale(rasterScale,rasterScale);ap.setRenderHint(QPainter::Antialiasing);ap.setRenderHint(QPainter::TextAntialiasing);
         const auto slot=[&](int index,int side){return QRect((index%cols)*spriteSize,(index/cols)*spriteSize,side,side);};
         const auto drawDock=[&](Button &b,QRect rect){
             ap.save();ap.translate(rect.topLeft());QLinearGradient gradient(0,0,44,44);gradient.setColorAt(0,withAlpha(mix(QColor("#303b4f"),b.color,.4),glassEnabled?.48:1));gradient.setColorAt(1,withAlpha(mix(QColor("#303b4f"),b.color,.16),glassEnabled?.60:1));
@@ -329,7 +348,7 @@ struct RadialSurface::State {
             ap.setBrush(gradient);ap.setPen(QPen(bronzeTheme?QColor(held?"#ffd08a":"#ad8055"):withAlpha(b.color,.62),.8));ap.drawPath(path);
             const auto center=polar(iconRadius,b.angle);
             paintIcon(ap,b.icon,center+QPointF(0,b.caption.isEmpty()?0:-6),bronzeTheme?QColor("#ffe5bd"):QColor("#edf3ff"));
-            if(!b.caption.isEmpty()){QFont font("Segoe UI");font.setPixelSize(9);font.setWeight(QFont::Medium);ap.setFont(font);ap.setPen(QColor("#ffe5bd"));ap.drawText(QRectF(center.x()-23,center.y()+7,46,13),Qt::AlignCenter,b.caption);}
+            if(!b.caption.isEmpty()){QFont font("Segoe UI");font.setPixelSize(10);font.setWeight(QFont::Medium);ap.setFont(font);ap.setPen(QColor("#ffe5bd"));ap.drawText(QRectF(center.x()-24,center.y()+7,48,14),Qt::AlignCenter,b.caption);}
             paintModifier(ap,b,center);ap.restore();drawDock(b,b.targetAtlas);
         }
         for(int i=0;i<int(children.size());i++){auto &b=children[i];b.targetAtlas=slot(int(buttons.size())*2+i,childSpriteSize*childAtlasScale);paintChild(ap,b,b.targetAtlas,glassEnabled);}
@@ -342,7 +361,7 @@ struct RadialSurface::State {
             const auto &b=retiring[i];int cursor=0;
             for(int y=0;y<childSpriteSize*childAtlasScale;y+=cell)for(int x=0;x<childSpriteSize*childAtlasScale;x+=cell){
                 double alpha=0;
-                for(int yy=0;yy<cell;yy++)for(int xx=0;xx<cell;xx++)alpha+=qAlpha(atlas.pixel(b.targetAtlas.x()+x+xx,b.targetAtlas.y()+y+yy));
+                for(int yy=0;yy<cell;yy++)for(int xx=0;xx<cell;xx++)alpha+=alphaAt(b.targetAtlas.x()+x+xx,b.targetAtlas.y()+y+yy);
                 if(alpha<4)continue;
                 ChildParticle p;p.child=i;p.id=b.slot*1000+cursor++;
                 p.offset=QPointF((x+cell/2.0)/childAtlasScale-childSpriteSize/2.0,(y+cell/2.0)/childAtlasScale-childSpriteSize/2.0);
@@ -354,7 +373,7 @@ struct RadialSurface::State {
         for(int i=0;i<int(buttons.size());i++){
             const auto &b=buttons[i];struct Cell{int x,y;double alpha;};std::vector<Cell> cells;
             for(int y=14;y<242;y+=voxelSize)for(int x=14;x<242;x+=voxelSize){
-                double alpha=0;for(int yy=0;yy<voxelSize;yy++)for(int xx=0;xx<voxelSize;xx++)alpha+=qAlpha(atlas.pixel(b.sourceAtlas.x()+x+xx,b.sourceAtlas.y()+y+yy));
+                double alpha=0;for(int yy=0;yy<voxelSize;yy++)for(int xx=0;xx<voxelSize;xx++)alpha+=alphaAt(b.sourceAtlas.x()+x+xx,b.sourceAtlas.y()+y+yy);
                 if(alpha>4)cells.push_back({x,y,alpha/(voxelSize*voxelSize*255.0)});
             }
             const int rows=std::max(1,int(std::round(std::sqrt(cells.size()))));int cursor=0;double end=0;
@@ -382,7 +401,20 @@ RadialSurface::RadialSurface(QQuickItem *parent):QQuickPaintedItem(parent),m_sta
     connect(&m_retireAnimation,&QVariantAnimation::finished,this,[this]{m_retiringChildren.clear();m_dirty=true;emit visualBoundsChanged();update();});
 }
 RadialSurface::~RadialSurface()=default;
-void RadialSurface::setButtons(const QVariantList &v){if(m_buttons==v)return;m_buttons=v;m_dirty=true;emit buttonsChanged();update();}
+void RadialSurface::itemChange(ItemChange change,const ItemChangeData &data){
+    QQuickPaintedItem::itemChange(change,data);
+    if(change==ItemDevicePixelRatioHasChanged||change==ItemSceneChange)update();
+}
+void RadialSurface::setButtons(const QVariantList &v){
+    if(m_buttons==v)return;
+    bool artworkChanged=m_buttons.size()!=v.size();
+    for(int i=0;!artworkChanged&&i<v.size();++i){
+        auto before=m_buttons[i].toMap(),after=v[i].toMap();
+        for(const auto* key:{"cx","cy","dockX","dockY","fromX","fromY"}){before.remove(key);after.remove(key);}
+        artworkChanged=before!=after;
+    }
+    m_buttons=v;m_dirty=m_dirty||artworkChanged;m_positionsDirty=true;emit buttonsChanged();update();
+}
 void RadialSurface::setChildButtons(const QVariantList &v){
     if(m_children==v)return;
     const auto sameBranch=[](const QVariantList &a,const QVariantList &b){
@@ -468,26 +500,44 @@ SceneBuffers buildScene(const auto &s,double t,const QString &selectedId,double 
     if(t>0&&t<1){
         for(int i=0;i<int(s.buttons.size());i++){
             const auto &b=s.buttons[i];const double pulse=std::exp(-std::pow((t-s.ends[i])/.065,2));
-            halo(lights,b.dock,34+12*(1-intensity),mix(beam,b.color,.4),intensity*.13+pulse*.19);
+            halo(lights,b.dock,34+12*(1-intensity),mix(beam,b.color,.4),intensity*(.13+pulse*.19));
             const double reveal=clamp(t/.14);const QPointF from=b.center+(b.dock-b.center)*(1-reveal);
             line(lights,from,b.dock,.75,withAlpha(beam,intensity*.085));
             const double head=clamp((t-.08)/.68);const QPointF light=b.center+(b.dock-b.center)*head+QPointF(std::sin(pi*head)*5,0);halo(lights,light,10,beam,intensity*.23);
         }
         if(!s.buttons.empty()){
-            double top=s.buttons[0].dock.y(),bottom=top;const double x=s.buttons[0].dock.x()-28;
-            for(const auto &b:s.buttons){top=std::min(top,b.dock.y());bottom=std::max(bottom,b.dock.y());}
-            line(lights,{x,top-28},{x,bottom+28},1.1,withAlpha(beam,intensity*.62));
+            const auto& first=s.buttons.front();
+            const auto rail=tabletpro::DockLayout::fromButton(first.dock,first.slot);
+            // Match the inset 1px housing border, including its rounded caps.
+            if(s.railStyle){
+                const auto border=rail.adjusted(1.5,1.5,-1.5,-1.5);
+                constexpr qreal radius=12.5;
+                const auto ink=withAlpha(beam,intensity*.62);
+                line(lights,{border.left(),border.top()+radius},{border.left(),border.bottom()-radius},1,ink);
+                for(int i=0;i<12;++i){
+                    const auto a=pi+i*pi/24, b=pi+(i+1)*pi/24;
+                    const auto top=border.topLeft()+QPointF(radius,radius);
+                    const auto bottom=border.bottomLeft()+QPointF(radius,-radius);
+                    line(lights,top+polar(radius,a),top+polar(radius,b),1,ink);
+                    line(lights,bottom+polar(radius,pi-i*pi/24),bottom+polar(radius,pi-(i+1)*pi/24),1,ink);
+                }
+            }else{
+                double top=first.dock.y(),bottom=top;
+                for(const auto& b:s.buttons){top=std::min(top,b.dock.y());bottom=std::max(bottom,b.dock.y());}
+                const auto x=first.dock.x()-21.5;
+                line(lights,{x,top-22},{x,bottom+22},1,withAlpha(beam,intensity*.62));
+            }
         }
     }
-    if(t<=0){for(const auto &b:s.buttons)textureQuad(solids,b.radialCenter,256,256,0,b.sourceAtlas,s.atlas.size());}
-    else if(t>=1){for(const auto &b:s.buttons)textureQuad(solids,b.dock,44,44,0,b.targetAtlas,s.atlas.size());}
+    if(t<=0){for(const auto &b:s.buttons)textureQuad(solids,b.radialCenter,256,256,0,b.sourceAtlas,s.atlasLayoutSize());}
+    else if(t>=1){for(const auto &b:s.buttons)textureQuad(solids,b.dock,44,44,0,b.targetAtlas,s.atlasLayoutSize());}
     else {
         for(const auto &p:s.particles){
             if(t>=s.ends[p.tool])continue;
             const auto &b=s.buttons[p.tool];const auto pose=quietPose(p,b,t);
             const int bucket=std::clamp(int(std::round(easeSmooth((pose.progress-.55)/.4)*(blendBuckets-1))),0,blendBuckets-1);
-            textureQuad(sources[bucket],pose.position,pose.width,pose.height,pose.rotation,p.sourceUV,s.atlas.size());
-            textureQuad(targets[bucket],pose.position,pose.width,pose.height,pose.rotation,p.targetUV,s.atlas.size());
+            textureQuad(sources[bucket],pose.position,pose.width,pose.height,pose.rotation,p.sourceUV,s.atlasLayoutSize());
+            textureQuad(targets[bucket],pose.position,pose.width,pose.height,pose.rotation,p.targetUV,s.atlasLayoutSize());
             if(pose.lift>.15&&p.alpha>.28){
                 const double hw=pose.width/2,hh=pose.height/2,z=pose.lift;
                 const auto transform=[&](QPointF q){const double co=std::cos(pose.rotation),si=std::sin(pose.rotation);return pose.position+QPointF(q.x()*co-q.y()*si,q.x()*si+q.y()*co);};
@@ -495,7 +545,7 @@ SceneBuffers buildScene(const auto &s,double t,const QString &selectedId,double 
                 quad(sides,transform({hw,-hh}),transform({hw+z,-hh-z}),transform({hw+z,hh-z}),transform({hw,hh}),withAlpha(mix(b.color,QColor("#111722"),.35),p.alpha*.8));
             }
         }
-        for(int i=0;i<int(s.buttons.size());i++)if(t>=s.ends[i])textureQuad(solids,s.buttons[i].dock,44,44,0,s.buttons[i].targetAtlas,s.atlas.size());
+        for(int i=0;i<int(s.buttons.size());i++)if(t>=s.ends[i])textureQuad(solids,s.buttons[i].dock,44,44,0,s.buttons[i].targetAtlas,s.atlasLayoutSize());
     }
     // Quiet hub orientation mark and selection halos are screen-space cues.
     if(!s.buttons.empty()&&t<.38){const auto c=s.buttons.front().radialCenter;const double a=1-easeSmooth((t-.06)/.32);for(int i=0;i<40;i++)line(outlines,c+polar(12,i*2*pi/40),c+polar(12,(i+1)*2*pi/40),.8,withAlpha(QColor("#71839e"),a*.48));halo(lights,c,20,beam,a*.04);}
@@ -518,7 +568,7 @@ SceneBuffers buildScene(const auto &s,double t,const QString &selectedId,double 
         const double alpha=1-smoother((local-.08)/.92);
         const double size=childVoxelSize*sourceScale*(1-.72*flight);
         const int bucket=std::clamp(int(std::round((1-alpha)*(blendBuckets-1))),0,blendBuckets-1);
-        textureQuad(sources[bucket],pos,size,size,(p.noise-.5)*.7*lift,p.uv,s.atlas.size());
+        textureQuad(sources[bucket],pos,size,size,(p.noise-.5)*.7*lift,p.uv,s.atlasLayoutSize());
         if(lift>.1&&p.alpha>.5){
             const double z=.8*lift,half=size/2;
             quad(sides,pos+QPointF(-half,-half),pos+QPointF(-half+z,-half-z),pos+QPointF(half+z,-half-z),pos+QPointF(half,-half),withAlpha(mix(b.color,beam,.5),alpha*.35));
@@ -544,8 +594,8 @@ SceneBuffers buildScene(const auto &s,double t,const QString &selectedId,double 
         if(b.selected||b.id==selectedId)halo(lights,visual,35,b.color,.26);
         if(reveal<.23){
             const int bucket=std::clamp(int(std::round((1-easeSmooth(reveal/.23))*(blendBuckets-1))),0,blendBuckets-1);
-            textureQuad(sources[bucket],visual,size,size,0,b.targetAtlas,s.atlas.size());
-        } else textureQuad(solids,visual,size,size,0,b.targetAtlas,s.atlas.size());
+            textureQuad(sources[bucket],visual,size,size,0,b.targetAtlas,s.atlasLayoutSize());
+        } else textureQuad(solids,visual,size,size,0,b.targetAtlas,s.atlasLayoutSize());
         if(b.selected||b.id==selectedId){
             for(int i=0;i<30;i++){
                 const double a0=b.angle-childHalfAngle+.014+(2*childHalfAngle-.028)*i/30;
@@ -591,13 +641,18 @@ void paintTextures(QPainter &p,const Textures &vertices,const QImage &atlas,doub
 }
 } // namespace
 
-bool RadialSurface::prepareGeometry() {
-    const bool rebuild=m_dirty;
-    if(rebuild){m_state->rebuild(m_buttons,m_children,m_retiringChildren,m_glassEnabled,m_continuousRail,m_bronzeTheme);m_dirty=false;}
-    else for(int i=0;i<int(m_state->children.size());i++){
+bool RadialSurface::prepareGeometry(qreal rasterScale) {
+    rasterScale=std::max(qreal(1),rasterScale);
+    const bool rebuild=m_dirty||!qFuzzyCompare(m_state->rasterScale,rasterScale);
+    if(rebuild){m_state->rebuild(m_buttons,m_children,m_retiringChildren,m_glassEnabled,m_continuousRail,m_bronzeTheme,rasterScale);++m_textureBuildCount;m_dirty=false;}
+    else {
+        if(m_positionsDirty)m_state->moveRoots(m_buttons);
+        for(int i=0;i<int(m_state->children.size());i++){
         const auto atlasRect=m_state->children[i].targetAtlas;
         m_state->children[i]=readChild(m_children[i],i);m_state->children[i].targetAtlas=atlasRect;
+        }
     }
+    m_positionsDirty=false;
     return rebuild;
 }
 QSGNode *RadialSurface::updatePaintNode(QSGNode *oldNode,UpdatePaintNodeData *data) {
@@ -607,7 +662,7 @@ QSGNode *RadialSurface::updatePaintNode(QSGNode *oldNode,UpdatePaintNodeData *da
     if(window()->rendererInterface()->graphicsApi()==QSGRendererInterface::Software)
         return QQuickPaintedItem::updatePaintNode(oldNode,data);
     auto *node=static_cast<RenderNode*>(oldNode);
-    const bool rebuilt=prepareGeometry();
+    const bool rebuilt=prepareGeometry(window()->effectiveDevicePixelRatio());
     if(rebuilt||!node){delete node;node=new RenderNode(window()->createTextureFromImage(m_state->atlas));}
     auto frame=buildScene(*m_state,m_reducedMotion?(m_dockProgress<.5?0:1):m_dockProgress,m_selectedId,m_childReveal,m_retireProgress,m_retireReveal);
     upload(node->lights,frame.lights);upload(node->sides,frame.sides);upload(node->solids,frame.solids);upload(node->outlines,frame.outlines);
@@ -615,7 +670,7 @@ QSGNode *RadialSurface::updatePaintNode(QSGNode *oldNode,UpdatePaintNodeData *da
     return node;
 }
 void RadialSurface::paint(QPainter *painter) {
-    prepareGeometry();
+    prepareGeometry(painter->device()->devicePixelRatioF());
     const auto frame=buildScene(*m_state,m_reducedMotion?(m_dockProgress<.5?0:1):m_dockProgress,m_selectedId,m_childReveal,m_retireProgress,m_retireReveal);
     painter->setRenderHint(QPainter::Antialiasing);painter->setRenderHint(QPainter::SmoothPixmapTransform);
     paintColors(*painter,frame.lights);paintColors(*painter,frame.sides);

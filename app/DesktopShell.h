@@ -12,7 +12,8 @@ class DesktopShell : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool trayAvailable READ trayAvailable CONSTANT)
 public:
-    DesktopShell(StudioController*,QQuickWindow* overlay,QObject* parent=nullptr,bool testMode=false);
+    DesktopShell(StudioController*,QQuickWindow* overlay,QObject* parent=nullptr,bool testMode=false,
+                 QNetworkAccessManager* updateNetwork=nullptr,const QString& updateSettings={});
     ~DesktopShell();
     bool trayAvailable() const { return m_trayAvailable; }
     static QIcon icon(bool update=false);
@@ -24,6 +25,7 @@ public:
     Q_INVOKABLE void finishQuit();
     Q_INVOKABLE void toggleOverlay();
     QMenu* menu() { return &m_menu; }
+    void setEditorWindow(QQuickWindow* editor);
 signals:
     void quitRequested();
     void exitApproved();
@@ -31,6 +33,7 @@ private:
     QDialog* showReleaseNotes(bool whatsNew);
     StudioController* m_studio;
     QQuickWindow* m_overlay;
+    QPointer<QQuickWindow> m_editor;
     UpdateChecker m_updates;
     QSystemTrayIcon m_tray;
     QMenu m_menu;
@@ -39,5 +42,6 @@ private:
     QPointer<QDialog> m_whatsNew;
     QTimer m_checkTimer;
     bool m_trayAvailable=false,m_installPending=false;
+    QString m_relaunchMode="radial";
 };
 }

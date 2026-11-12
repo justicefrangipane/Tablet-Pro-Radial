@@ -62,7 +62,12 @@ int main(int argc,char**argv){
         auto* ring=overlay->findChild<QQuickItem*>("settingsSurface");
         auto* rail=overlay->findChild<QQuickItem*>("overlayRail");
         auto* panel=overlay->findChild<QQuickItem*>("railSettingsPanel");
+        auto* toolsCenter=overlay->findChild<QQuickItem*>("radialToolCenter");
+        auto* settingsCenter=overlay->findChild<QQuickItem*>("radialSettingsCenter");
+        auto* hub=overlay->findChild<QQuickItem*>("overlayToolbar");
+        auto* envelope=overlay->findChild<QQuickItem*>("settingsRippleEnvelope");
         expect(animation&&surface&&ring&&rail&&panel,"both layouts exist");
+        expect(toolsCenter&&settingsCenter&&hub&&envelope,"ripple visuals and stable center input exist");
         const QString out=QDir::currentPath()+"/settings-bloom-captures";QDir().mkpath(out);
         for(const bool docked:{false,true}){
             if(docked){studio.runtime()->setReducedMotion(true);studio.runtime()->toggleDock();studio.runtime()->setReducedMotion(false);wait(100);}
@@ -81,6 +86,7 @@ int main(int argc,char**argv){
             expect(overlay->property("menuOpen").toBool()&&!surface->isEnabled()&&!actions->isEnabled(),"no hidden tool or premature setting can fire during the fill");
             expect(until([&]{return overlay->property("bloomProgress").toDouble()>.08;}),"bloom advances after the ellipsis");
             QMetaObject::invokeMethod(animation,"pause",Qt::DirectConnection);
+            expect(animation->property("duration").toInt()==(docked?760:960),"floating ripple uses the selected timing while dock timing is preserved");
             int last=baseline;
             for(const double progress:{.15,.45,.70}){
                 overlay->setProperty("bloomProgress",progress);
@@ -88,12 +94,29 @@ int main(int argc,char**argv){
                 std::cout<<mode.toStdString()<<" "<<progress<<" bronze pixels "<<filled<<'\n';
                 expect(filled>last,"rendered bronze area grows at each sampled frame");last=filled;
                 expect(bloom->mapRectToScene(bloom->boundingRect())==bounds,"fill never changes the menu footprint");
-                if(docked)expect(bloom->width()==44&&rail->width()==44,"docked fill stays 44 px wide");
+                if(docked)expect(bloom->width()==44&&rail->width()==44&&overlay->property("ringRippleDistance").toDouble()==0&&overlay->property("centerRippleScale").toDouble()==1,"docked fill stays 44 px wide without outward movement");
+            }
+            if(!docked){
+                const auto toolBuilds=qobject_cast<RadialSurface*>(surface)->textureBuildCount();
+                const auto settingBuilds=qobject_cast<RadialSurface*>(ring)->textureBuildCount();
+                overlay->setProperty("bloomProgress",.25);const auto press=capture("press-hold");
+                expect(toolsCenter->scale()>1.06&&toolsCenter->scale()==settingsCenter->scale()&&overlay->property("ringRippleDistance").toDouble()<.2,"center expands and holds before the ring releases");
+                expect(hub->width()==76&&hub->height()==76&&hub->scale()==1,"the center click and drag target remains stable");
+                overlay->setProperty("bloomProgress",.57);const auto released=capture("outward-ripple");
+                expect(toolsCenter->scale()<1.03&&overlay->property("ringRippleDistance").toDouble()>5&&overlay->property("ringRippleDistance").toDouble()<=6,"outer buttons follow the center by only a few pixels");
+                const auto topEdge=[](const QImage& image){for(int y=0;y<image.height()/2;++y)if(image.pixelColor(image.width()/2,y).alpha()>150)return y;return image.height();};
+                expect(topEdge(released)<topEdge(press)-3,"rendered outer edge actually moves outward");
+                expect(qobject_cast<RadialSurface*>(surface)->textureBuildCount()==toolBuilds&&qobject_cast<RadialSurface*>(ring)->textureBuildCount()==settingBuilds,"ripple movement reuses sharp cached icon textures");
+                expect(envelope->isVisible()&&envelope->width()==216,"ripple has a bounded envelope to prevent native clipping");
             }
             QMetaObject::invokeMethod(animation,"resume",Qt::DirectConnection);
-            expect(until([&]{return overlay->property("settingsReady").toBool();}),"760 ms animation settles");
+            expect(until([&]{return overlay->property("settingsReady").toBool();}),"settings animation settles");
             expect(!surface->isVisible()&&actions->isEnabled(),"finished settings replace tools and become interactive");
             expect(bronzePixels(capture("open"))>=last,"final frame is fully bronze");
+            expect(!envelope->isVisible(),"the temporary ripple envelope retires at rest");
+            if(!docked)for(const auto& value:qobject_cast<RadialSurface*>(ring)->buttons()){
+                const auto b=value.toMap();expect(qobject_cast<RadialSurface*>(ring)->hitRoot(b["cx"].toDouble(),b["cy"].toDouble())==b["id"].toString(),"settings hit targets follow their resting artwork");
+            }
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);
             expect(!overlay->property("menuOpen").toBool()&&overlay->property("bloomProgress").toDouble()==1&&!surface->isEnabled()&&!actions->isEnabled(),"Back reverses from the fully open frame with input blocked");
             expect(until([&]{return overlay->property("bloomProgress").toDouble()<.75;}),"closing bloom moves backward");
@@ -109,17 +132,52 @@ int main(int argc,char**argv){
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);
             expect(overlay->property("bloomProgress").toDouble()==reversing,"reopening during reverse continues without a jump");
             expect(until([&]{return overlay->property("settingsReady").toBool();}),"reopened bloom reaches its open endpoint");
-            QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);wait(850);
+            QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);expect(until([&]{return overlay->property("toolsReady").toBool();}),"reopened menu closes completely");
             expect(!overlay->property("menuOpen").toBool()&&overlay->property("bloomProgress").toDouble()==0,"closing mid-fill cannot reopen from an old animation");
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);wait(90);overlay->hide();wait(850);
             expect(!overlay->property("menuOpen").toBool()&&overlay->property("bloomProgress").toDouble()==0,"hiding cancels the fill");overlay->show();wait(60);
             studio.setReducedMotion(true);QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);
             expect(overlay->property("settingsReady").toBool()&&!animation->property("running").toBool(),"Reduced motion switches instantly");
+            expect(overlay->property("centerRippleScale").toDouble()==1&&overlay->property("ringRippleDistance").toDouble()==0,"Reduced motion skips center and ring movement");
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);studio.setReducedMotion(false);
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);wait(90);studio.setReducedMotion(true);
             expect(overlay->property("settingsReady").toBool()&&!animation->property("running").toBool(),"enabling Reduced motion during a fill settles immediately");
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);studio.setReducedMotion(false);
         }
+        // Observe the real hardware-rendered handoff from assembly to housing.
+        studio.runtime()->setReducedMotion(true);studio.runtime()->toggleDock();
+        studio.runtime()->setReducedMotion(false);studio.runtime()->setDurationMs(1600);
+        studio.runtime()->toggleDock();
+        expect(until([&]{return studio.runtime()->dockProgress()>.8;}),"dock assembly advances");
+        auto* railToggle=overlay->findChild<QQuickItem*>("railSettingsButton");
+        expect(studio.runtime()->transitioning()&&rail->isVisible()&&rail->opacity()>0&&rail->opacity()<1&&!railToggle->isEnabled(),"housing fades in around landing icons without enabling controls mid-transition");
+        const auto landingBounds=rail->mapRectToScene(rail->boundingRect());
+        expect(until([&]{return studio.runtime()->dockProgress()>.95;}),"dock icons reach their landing positions");
+        const auto landing=overlay->grabWindow();landing.save(out+"/dock-landing.png");
+        expect(until([&]{return !studio.runtime()->transitioning();}),"dock transition completes");wait(70);
+        const auto landed=overlay->grabWindow();landed.save(out+"/dock-landed.png");
+        expect(rail->mapRectToScene(rail->boundingRect())==landingBounds&&rail->opacity()==1&&railToggle->isEnabled(),"housing keeps the same position as interaction returns");
+        const qreal dockScale=qreal(landing.width())/overlay->width();int iconPixels=0;
+        const auto white=[](QColor c){return c.alpha()>180&&c.red()>180&&c.green()>180&&c.blue()>180;};
+        QVector<QPoint> iconPoints;
+        for(int y=qCeil((landingBounds.top()+44)*dockScale);y<qFloor(landingBounds.bottom()*dockScale);++y)
+            for(int x=qCeil(landingBounds.left()*dockScale);x<qFloor(landingBounds.right()*dockScale);++x){
+                if(white(landed.pixelColor(x,y))){++iconPixels;iconPoints.append({x,y});}
+            }
+        // Compare registration, allowing the landing glow to fade: the unshifted
+        // frame must match better than any one-physical-pixel displacement.
+        const auto error=[&](int dx,int dy){qint64 sum=0;for(const auto p:iconPoints){
+            const auto a=landing.pixelColor(p+QPoint(dx,dy)),b=landed.pixelColor(p);
+            sum+=std::abs(a.red()-b.red())+std::abs(a.green()-b.green())+std::abs(a.blue()-b.blue());
+        }return sum;};
+        const auto alignedError=error(0,0);bool registered=true;
+        for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx)if(dx||dy)registered&=alignedError*2<error(dx,dy);
+        std::cout<<"Dock landing: "<<iconPixels<<" icon pixels, registered "<<registered<<"\n";
+        expect(iconPixels>100&&registered,"native icon pixels stay aligned when the dock appears");
+        studio.runtime()->toggleDock();wait(150);
+        expect(rail->isVisible()&&rail->opacity()>0&&!railToggle->isEnabled(),"undocking reverses the housing handoff");
+        studio.runtime()->toggleDock();
+        expect(until([&]{return !studio.runtime()->transitioning();})&&rail->opacity()==1,"reversing mid-undock restores the same housing");
         tabletpro::BackdropEffect backdrop;backdrop.configure(overlay);
         tabletpro::DisplayRecovery recovery(overlay,studio.runtime(),&backdrop);
         int refreshes=0;
@@ -133,7 +191,7 @@ int main(int argc,char**argv){
         QObject::connect(&recovery,&tabletpro::DisplayRecovery::refreshMask,overlay,mask);
         mask();wait(150);
         const auto cropRail=[&]{
-            const auto frame=overlay->grabWindow();const auto r=rail->mapRectToScene(rail->boundingRect());const qreal s=frame.devicePixelRatio();
+            const auto frame=overlay->grabWindow();const auto r=rail->mapRectToScene(rail->boundingRect());const qreal s=qreal(frame.width())/overlay->width();
             return frame.copy(QRectF(r.x()*s,r.y()*s,r.width()*s,r.height()*s).toAlignedRect());
         };
         const auto intact=cropRail();expect(!intact.isNull(),"dock pixels available before display reset");

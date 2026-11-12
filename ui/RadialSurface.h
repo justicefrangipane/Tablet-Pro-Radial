@@ -5,6 +5,7 @@
 #include <QVariantAnimation>
 #include <QRectF>
 #include <memory>
+#include <atomic>
 
 // Rendering and pointer capture only. Menu meaning, gesture decisions and action
 // dispatch belong to the portable core / controller, not this surface.
@@ -35,6 +36,7 @@ public:
     bool bronzeTheme() const { return m_bronzeTheme; }
     QRectF visualBounds() const;
     bool childAnimating() const { return m_childAnimation.state()==QAbstractAnimation::Running || m_retireAnimation.state()==QAbstractAnimation::Running; }
+    quint64 textureBuildCount() const { return m_textureBuildCount.load(); }
     void setButtons(const QVariantList &value);
     void setChildButtons(const QVariantList &value);
     void setSelectedId(const QString &value);
@@ -61,6 +63,7 @@ signals:
     void released(int pointerId, qreal x, qreal y);
     void canceled();
 protected:
+    void itemChange(ItemChange change, const ItemChangeData &data) override;
     QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *) override;
     void mousePressEvent(QMouseEvent *event) override;
     void mouseDoubleClickEvent(QMouseEvent *event) override;
@@ -71,7 +74,7 @@ protected:
     void touchUngrabEvent() override;
 private:
     void cancelPointer();
-    bool prepareGeometry();
+    bool prepareGeometry(qreal rasterScale);
     struct State;
     std::unique_ptr<State> m_state;
     QVariantList m_buttons, m_children, m_retiringChildren;
@@ -83,5 +86,7 @@ private:
     bool m_glassEnabled = false;
     bool m_continuousRail = false;
     bool m_bronzeTheme = false;
+    bool m_positionsDirty = false;
+    std::atomic<quint64> m_textureBuildCount{0};
     int m_pointerId = -1;
 };

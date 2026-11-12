@@ -56,6 +56,7 @@ class StylusInput final : public QObject {
     Q_PROPERTY(QVariantList readings READ readings NOTIFY readingsChanged)
 public:
     explicit StylusInput(QObject* parent = nullptr);
+    static constexpr int SideButtonHoldMs = 500;
     ~StylusInput() override;
     bool enabled() const { return enabled_; }
     int selectedSideButton() const { return selectedSideButton_; }
@@ -73,6 +74,8 @@ signals:
     void selectedSideButtonChanged();
     void statusChanged();
     void settingsChanged();
+    void sideButtonDown();
+    void sideButtonHeld();
     void sideButtonPressed();
     void readingsChanged();
     void tipChanged(quintptr source, bool down);
@@ -88,8 +91,13 @@ private:
     void refreshStatus();
     void stopChannel(Channel& channel);
     void stopHelper();
+    void updateButtonGesture(Channel& channel, const StylusButtons& buttons);
+    void cancelButtonGesture();
     std::array<std::unique_ptr<Channel>,2> channels_;
     QTimer readingsTimer_;
+    QTimer buttonHoldTimer_;
+    int buttonOwner_ = -1;
+    bool buttonHeld_ = false;
     QString status_ = QStringLiteral("Pen side button is off.");
     bool enabled_ = false;
     bool started_ = false;

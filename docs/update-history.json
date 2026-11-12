@@ -2,6 +2,73 @@
   "app": "Tablet Pro Radial",
   "releases": [
     {
+      "version": "0.3.24",
+      "date": "2026-11-11",
+      "title": "Press and release ripple and aligned docking",
+      "improved": [
+        "Opening the floating radial's center menu now uses the selected Press and release animation: the center grows and pauses, then the outer buttons move gently outward as bronze spreads through them.",
+        "The transition takes 960 ms, with up to about 8% center expansion and 6 pixels of outward movement. Closing reverses the motion, including when you change direction partway through.",
+        "The docked rail keeps its contained liquid fill. Reduced motion skips the ripple."
+      ],
+      "fixed": [
+        "The docking animation's guide now follows the finished rail's position and rounded edge. The rail fades in around the landing icons, removing the misaligned reveal.",
+        "Docking and undocking share the same landing layout, including menus with empty button slots and different display scales."
+      ]
+    },
+    {
+      "version": "0.3.23",
+      "date": "2026-11-11",
+      "title": "Sharper menu text and icons",
+      "fixed": [
+        "Menu icons and labels now render at your display's pixel density instead of enlarging low-resolution artwork. This applies to the radial, child menus, settings menu, and dock.",
+        "Artwork refreshes when the display scale changes while retaining the smooth-drag cache."
+      ],
+      "improved": [
+        "Small radial labels are slightly larger for easier reading without increasing the menu size."
+      ]
+    },
+    {
+      "version": "0.3.22",
+      "date": "2026-11-11",
+      "title": "Children in place and smoother dragging",
+      "improved": [
+        "In the floating radial, tap a parent or slide outward from it to replace the current ring with its children. Nested parents use the same center, and tapping the center goes Back. Lifting the opening contact leaves the children ready for your next tap.",
+        "Drag the center to move the floating radial, including an open child menu. The dock keeps its existing slide-out fan and hold-at-pen behavior."
+      ],
+      "fixed": [
+        "Dragging reuses the menu artwork and keeps pointer capture stable to reduce lag and glitches. Glass returns when the drag ends instead of being rebuilt at every movement."
+      ]
+    },
+    {
+      "version": "0.3.21",
+      "date": "2026-11-11",
+      "title": "Install updates in one click",
+      "improved": [
+        "After downloading an update, click Install update. Radial closes safely, installs the verified update, and reopens automatically without extra installer or Open now prompts.",
+        "Updates started from this version reopen in the same docked, radial, or editor mode. A progress window shows when Radial is closing, installing, and reopening.",
+        "Saved menus and settings are preserved. Unapplied editor changes still offer Apply, Discard, or Keep editing before the update starts. Failed installer launches leave Radial open so you can retry."
+      ]
+    },
+    {
+      "version": "0.3.20",
+      "date": "2026-11-09",
+      "title": "Animated switches between dock and radial",
+      "fixed": [
+        "Switching between the docked rail and floating radial now plays the transition every time, including repeated long presses of the pen side button and the Dock / Radial settings controls.",
+        "Reversing a mode change while it is moving continues smoothly from its current position. Reduced motion still switches immediately."
+      ]
+    },
+    {
+      "version": "0.3.19",
+      "date": "2026-11-09",
+      "title": "Hold to switch modes and show child menus",
+      "improved": [
+        "Hold your selected pen side button for half a second to switch between the docked rail and floating radial. Release after a quick press to open or hide the menu. Releasing a long press leaves the switched menu visible.",
+        "Hold a parent button for 300 ms to show its child radial at the pen tip. The docked rail and its buttons stay visible alongside it. Release the parent to close its children; choose a child with the pen while the parent is still held.",
+        "A child that was already selected keeps its action or modifier behavior when the parent is released. Sliding outward from a parent still opens its fan. Pen settings explain the short-press and long-press controls."
+      ]
+    },
+    {
       "version": "0.3.18",
       "date": "2026-11-08",
       "title": "Pen trigger, hover locks and automatic closing",

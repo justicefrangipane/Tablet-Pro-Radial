@@ -142,6 +142,7 @@ ApplicationWindow {
 
     function finishClosing() {
         const shouldQuit = quitAfterClose;
+        quitAfterClose = false;
         unappliedDialog.close();
         if (shouldQuit) desktop.finishQuit();
         else editor.close();
@@ -353,7 +354,7 @@ ApplicationWindow {
             spacing: 16
             Label {
                 Layout.fillWidth: true
-                text: "Open the applied menu from your drawing app. Dock it to keep your tools at the edge of the screen."
+                text: "Quick press: open or hide your menu. Hold for half a second: switch between the docked rail and floating radial."
                 color: "#b8c7da"
                 wrapMode: Text.WordWrap
                 lineHeight: 1.2
@@ -408,7 +409,7 @@ ApplicationWindow {
             SectionLabel { text: "USING YOUR PEN DRIVER" }
             Label {
                 Layout.fillWidth: true
-                text: "For Wacom, Xencelabs, or another pen driver, assign Ctrl+Alt+Space to your side button in its settings. That shortcut opens the same menu. Use one method per button."
+                text: "If direct pen input is unavailable, assign Ctrl+Alt+Space to your side button in the pen driver. That shortcut opens or hides the menu; hold-to-switch uses direct pen input. Use one method per button."
                 color: "#a8b8cc"
                 wrapMode: Text.WordWrap
                 lineHeight: 1.2
@@ -449,7 +450,7 @@ ApplicationWindow {
         closePolicy: Popup.CloseOnEscape
         padding: 22
         property string applyError: ""
-        onClosed: editor.quitAfterClose = false
+        onClosed: { if(editor.quitAfterClose)desktop.cancelQuit();editor.quitAfterClose=false; }
         onOpened: {
             applyError = "";
             keepEditingButton.forceActiveFocus();
@@ -754,7 +755,7 @@ ApplicationWindow {
                             selectedId: editor.draggedButtonId.length && !editor.dropProblem.length ? editor.dropParentId : studio.preview.selectedId
                             enabled: !editor.arrangeButtons
                             reducedMotion: studio.reducedMotion
-                            opacity: studio.preview.parentMenuOpen ? 0 : 1
+                            opacity: studio.preview.parentMenuOpen && !studio.preview.docked ? 0 : 1
                             onWidthChanged: studio.preview.setViewport(width, height)
                             onHeightChanged: studio.preview.setViewport(width, height)
                             Component.onCompleted: studio.preview.setViewport(width, height)
@@ -808,7 +809,7 @@ ApplicationWindow {
                     }
                     Label {
                         Layout.fillWidth: true
-                        text: editor.arrangeButtons ? "Drag a button onto a parent in the preview or the menu list. Green means it can move. Undo restores the previous layout." : "Hold a parent for 300 ms to open its radial. Slide out for a fan. Use Arrange buttons to move buttons into parents."
+                        text: editor.arrangeButtons ? "Drag a button onto a parent in the preview or the menu list. Green means it can move. Undo restores the previous layout." : "Radial: tap or slide out from a parent to replace its ring. Dock: hold 300 ms at the pen tip, or slide for a fan. Use Arrange buttons to move buttons into parents."
                         color: "#7d90a7"
                         font.pixelSize: 11
                         wrapMode: Text.WordWrap
@@ -861,7 +862,7 @@ ApplicationWindow {
                             Label {
                                 Layout.fillWidth: true
                                 visible: studio.selectedKind === "group"
-                                text: "Hold for 300 ms to open a radial at the pen tip. Slide out for a fan. Choose a child below to edit it."
+                                text: "Radial: tap or slide out to open children in place. Dock: hold 300 ms at the pen tip, or slide for a fan. Choose a child below to edit it."
                                 color: "#8ba1bb"
                                 font.pixelSize: 11
                                 wrapMode: Text.WordWrap

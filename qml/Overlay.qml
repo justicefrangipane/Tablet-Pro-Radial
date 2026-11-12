@@ -18,8 +18,8 @@ Window {
     readonly property bool childrenVisible: surface.visualBounds.width > 0 || studio.runtime.parentMenuOpen
     property string resultMessage: ""
     readonly property bool railMode: studio.runtime.docked && !morphing
-    readonly property real railX: 13
-    readonly property real railY: height/2-193.5
+    readonly property real railX: studio.runtime.dockBounds.x
+    readonly property real railY: studio.runtime.dockBounds.y
     readonly property color settingsInk: "#ffe5bd"
     readonly property color settingsActiveInk: "#ffd08a"
     readonly property color settingsHover: "#6a4c34"
@@ -30,6 +30,21 @@ Window {
     readonly property bool settingsVisible: menuOpen || bloomProgress > 0
     readonly property bool toolsReady: !menuOpen && bloomProgress <= 0
     readonly property bool instantSettings: studio.reducedMotion || radialBloom.softwareRenderer
+    readonly property int settingsDuration: railMode ? 760 : 960
+    readonly property bool rippleAllowed: !railMode && !morphing && !instantSettings
+    readonly property real centerPress: bloomProgress < .17 ? smoothProgress(bloomProgress/.17)
+        : bloomProgress < .31 ? 1 : 1-smoothProgress((bloomProgress-.31)/.31)
+    readonly property real ringRelease: bloomProgress < .28 ? 0 : bloomProgress < .57
+        ? smoothProgress((bloomProgress-.28)/.29) : 1-smoothProgress((bloomProgress-.57)/.37)
+    readonly property real centerRippleScale: rippleAllowed ? 1+.08*(.86*centerPress+.14*smoothProgress(bloomProgress)) : 1
+    readonly property real ringRippleDistance: rippleAllowed ? 6*(.86*ringRelease+.14*smoothProgress(bloomProgress)) : 0
+    function smoothProgress(value) { const p=Math.max(0,Math.min(1,value)); return p*p*(3-2*p); }
+    function toolButtons() {
+        const distance=ringRippleDistance
+        return studio.runtime.buttons.map(function(button){
+            return Object.assign({},button,{cx:button.cx+distance*Math.cos(button.angle),cy:button.cy+distance*Math.sin(button.angle)})
+        })
+    }
     onMenuOpenChanged: {
         resultMessage=""
         const current=bloomProgress
@@ -40,7 +55,7 @@ Window {
         else if(Math.abs(goal-current)>0.0001){
             settingsBloomAnimation.from=current
             settingsBloomAnimation.to=goal
-            settingsBloomAnimation.duration=Math.max(1,Math.round(760*Math.abs(goal-current)))
+            settingsBloomAnimation.duration=Math.max(1,Math.round(settingsDuration*Math.abs(goal-current)))
             settingsBloomAnimation.start()
         }else bloomProgress=goal
     }
@@ -51,7 +66,7 @@ Window {
         id: settingsBloomAnimation
         objectName: "settingsBloomAnimation"
         target: overlay; property: "bloomProgress"
-        from: 0; to: 1; duration: 760
+        from: 0; to: 1; duration: 960
         easing.type: Easing.Linear
     }
     property bool editingButtons: false
@@ -72,7 +87,7 @@ Window {
             const angle=-Math.PI/2+i*Math.PI/3
             return {id:key,icon:key,caption:labels[i],slot:i,color:"#ad8055",angle:angle,
                 modifierState:(key==="sound"&&studio.soundEnabled)||(key==="glass"&&studio.backdropEnabled)?"held":"",
-                cx:97+70*Math.cos(angle),cy:97+70*Math.sin(angle)}
+                cx:108+(70+ringRippleDistance)*Math.cos(angle),cy:108+(70+ringRippleDistance)*Math.sin(angle)}
         })
     }
     onVisibleChanged: {
@@ -97,6 +112,10 @@ Window {
     }
     Connections {
         target: studio
+        function onShowRuntimeRequested(target, toggle) {
+            overlay.menuOpen=false;overlay.editingButtons=false
+            settingsBloomAnimation.stop();overlay.bloomProgress=0
+        }
         function onChanged() {
             if (overlay.visible && !overlay.menuOpen && studio.platformStatus.length > 0) {
                 overlay.resultMessage = studio.platformStatus;
@@ -109,9 +128,9 @@ Window {
         id: railHousing
         objectName: "overlayRail"
         x: overlay.railX; y: overlay.railY
-        width: 44; height: 347
-        visible: overlay.railMode
-        opacity: studio.runtime.parentMenuOpen ? 0 : 1
+        width: studio.runtime.dockBounds.width; height: studio.runtime.dockBounds.height
+        visible: overlay.railMode || overlay.morphing
+        opacity: overlay.morphing ? overlay.smoothProgress((studio.runtime.dockProgress-.72)/.23) : 1
         Rectangle {
         anchors.fill: parent; anchors.margins: 1; radius: 13
         gradient: Gradient {
@@ -136,7 +155,7 @@ Window {
         id: surface
         objectName: "runtimeSurface"
         anchors.fill: parent
-        buttons: studio.runtime.buttons
+        buttons: overlay.toolButtons()
         childButtons: studio.runtime.childButtons
         dockProgress: studio.runtime.dockProgress
         selectedId: studio.runtime.selectedId
@@ -145,7 +164,7 @@ Window {
         continuousRail: true
         bronzeTheme: false
         visible: overlay.bloomProgress < 1
-        opacity: studio.runtime.parentMenuOpen ? 0 : 1
+        opacity: studio.runtime.parentMenuOpen && !studio.runtime.docked ? 0 : 1
         enabled: overlay.toolsReady
         onWidthChanged: studio.runtime.setViewport(width,height)
         onHeightChanged: studio.runtime.setViewport(width,height)
@@ -168,7 +187,9 @@ Window {
         onCanceled: if(overlay.visible && !overlay.selectionDismissal)studio.runtime.cancel()
     }
     Rectangle {
+        objectName: "radialToolCenter"
         x: hub.x; y: hub.y; width: hub.width; height: hub.height; radius: 38
+        scale: overlay.centerRippleScale
         visible: hub.visible && overlay.bloomProgress < 1
         z: -1
         gradient: Gradient {
@@ -182,9 +203,9 @@ Window {
     BloomLayer {
         id: radialBloom
         objectName: "radialSettingsBloom"
-        x: studio.runtime.radialCenter.x-97
-        y: studio.runtime.radialCenter.y-97
-        width: 194; height: 194
+        x: studio.runtime.radialCenter.x-108
+        y: studio.runtime.radialCenter.y-108
+        width: 216; height: 216
         visible: overlay.settingsVisible && !overlay.railMode
         progress: overlay.bloomProgress
         enabled: overlay.settingsReady
@@ -203,7 +224,9 @@ Window {
             onCanceled: {selectedId="";pressedId="";}
         }
         Rectangle {
-            x: 59; y: 59; width: 76; height: 76; radius: 38
+            objectName: "radialSettingsCenter"
+            x: 70; y: 70; width: 76; height: 76; radius: 38
+            scale: overlay.centerRippleScale
             gradient: Gradient {
                 GradientStop { position: 0; color: "#956b46" }
                 GradientStop { position: 0.45; color: "#583e2d" }
@@ -212,6 +235,12 @@ Window {
             border.color: "#d4ab78";border.width: 1
             Rectangle { anchors.fill: parent;anchors.margins: 4;radius: width/2;color: "transparent";border.color: "#407f5b3e" }
         }
+    }
+    Item {
+        objectName: "settingsRippleEnvelope"
+        x: studio.runtime.radialCenter.x-108; y: studio.runtime.radialCenter.y-108
+        width: 216; height: 216
+        visible: overlay.visible && overlay.rippleAllowed && overlay.bloomProgress > 0 && overlay.bloomProgress < 1
     }
     Item {
         id: hub
@@ -248,21 +277,10 @@ Window {
             gesturePolicy: TapHandler.ReleaseWithinBounds
             onTapped: centerButton.clicked()
         }
-        DragHandler {
+        RadialDragHandler {
                 id: centerDrag
                 objectName: "radialCenterDrag"
-                target: null
-                dragThreshold: 7
-                acceptedButtons: Qt.LeftButton
-                minimumPointCount: 1; maximumPointCount: 1
-                cursorShape: Qt.ClosedHandCursor
-                property point origin: Qt.point(0,0)
-                function moveCenter() {
-                    if(active)studio.runtime.moveRadialCenter(origin.x+centroid.scenePosition.x-centroid.scenePressPosition.x,
-                                                             origin.y+centroid.scenePosition.y-centroid.scenePressPosition.y)
-                }
-                onActiveChanged: if(active){origin=studio.runtime.radialCenter;studio.runtime.releaseModifiers();moveCenter();}
-                onTranslationChanged: moveCenter()
+                session: studio.runtime
         }
     }
     BloomLayer {
@@ -335,6 +353,9 @@ Window {
         pressedFill: overlay.menuOpen ? overlay.settingsPressed : "#526b8b"
         reduceMotion: studio.reducedMotion
         visible: railHousing.visible && !studio.runtime.active && !overlay.childrenVisible
+        opacity: railHousing.opacity
+        enabled: overlay.railMode
+        dimWhenDisabled: false
         onClicked: {if(overlay.editingButtons)overlay.editingButtons=false;else overlay.menuOpen=!overlay.menuOpen;}
     }
     ParentMenu {

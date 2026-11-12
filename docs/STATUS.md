@@ -1,3 +1,59 @@
+# Local candidate: 0.3.24
+
+The floating center menu uses the selected Press and release ripple: a 960 ms reversible timeline expands the center, holds briefly, then moves the outer wedges by up to 6 logical pixels as bronze fills outward. Center input stays fixed, icon textures remain cached, and one temporary native mask contains the movement. Docked settings retain their contained 760 ms liquid fill; Reduced motion skips the ripple.
+
+Docking now shares one layout between the model, animation guide and QML housing. The obsolete wider guide is replaced by the actual inset rail border and rounded caps, including when root slots are empty. The housing and header fade in around the landed icons, with input disabled until the transition completes. Undocking follows the same path in reverse. Landing glows fade out at completion.
+
+All ten Windows suites pass (57.99 seconds). Tests cover rendered guide placement at three viewport sizes and 100%, 150% and 200% density, sparse menus, identical endpoint icon pixels, native frame registration, ripple timing/reversal, stable hit targets and texture reuse. Native checks also verify the housing handoff in reverse and display recovery. Packaged startup and installation receipts remain outside the source archive; physical pen feel remains a hands-on acceptance check.
+
+Not published. Exact 0.3.24 notes require Justice or Bassem approval.
+
+# Previous local candidate: 0.3.23
+
+The sprite atlas now rasterizes vector paths and glyphs at the destination display's effective device pixel ratio. Texture coordinates and animation geometry remain logical, including fractional scaling, dock particles and retiring child fragments. Display changes request a refresh; ordinary position changes retain the cached artwork. The software fallback uses its paint device's pixel ratio. Radial captions and the child-center title increase from 9 to 10 logical pixels without enlarging the wheel.
+
+All ten Windows suites pass (58.60 seconds). Density checks compare icon and caption edge detail with enlarged 1x artwork at 125%, 150%, 200% and 300%, check identical cached frames and logical bounds, and return to 100%. A separate native Windows run uses installed fonts in addition to offscreen coverage. Packaged startup results are recorded outside the source archive.
+
+Not published. Exact 0.3.23 notes require Justice or Bassem approval.
+
+# Previous local candidate: 0.3.22
+
+Floating parent taps and outward pulls replace the current wheel with a persistent child ring at the same center. Opening-contact release cannot select a child beneath the original parent. Nested parents retain the center and Back stack. Center dragging moves both the root anchor and open child ring. Dock fans and held-at-pen parent ownership retain their existing behavior.
+
+Position-only changes now update cached sprite/particle geometry instead of rebuilding the icon atlas and GPU texture. During a drag the native overlay uses one stable capture region with Glass disabled; the body mask and Glass return on release or cancellation. Center gestures use active translation, avoiding movement-relative pointer calculations as the hub follows the input.
+
+All nine Windows suites pass (53.76 seconds), including mouse, pen and touch center drags, long sample sequences, persistent tap/slide parents, nested Back, child actions, and 80 rendered movement frames without an atlas rebuild. Native packaged smoke also exercises the motion mask, restored Glass, texture reuse and in-place child bounds. Physical pen drag feel remains a hands-on acceptance check.
+
+Not published. Exact 0.3.22 notes require Justice or Bassem approval.
+
+# Previous local candidate: 0.3.21
+
+In-app Install launches the checksum-verified installer with the owning app PID and original layout, then follows the normal quit path to release modifiers and stop pen helpers. Setup waits for exit, skips the redundant install/open prompts, displays progress, and reopens the installed app in the requested mode. The older two-argument handoff also skips prompts and reopens radial. Manual setup retains its choices; verification never installs or reopens.
+
+Dirty drafts retain Apply/Discard/Keep editing. Dismissing the prompt cancels the pending install so it can be retried. The layout is captured before the prompt opens the editor. Failed or tampered installer launches leave the app open; repeat Install clicks cannot launch duplicates.
+
+All nine Windows suites pass (54.35 seconds). Install-button tests download a checksum-verified executable fixture through the updater, click the real Updates dialog, and inspect a detached process receipt for PID/layout. They cover radial, docked, editor, protected drafts, cancellation/retry, duplicate clicks and failed launch. Installer workflow tests cover legacy handoff, verification-only behavior, manual cancellation, failed install, and waiting for a real process to exit. These tests do not install over the user's running copy.
+
+Not published. Exact 0.3.21 notes require Justice or Bassem approval.
+
+# Previous local candidate: 0.3.20
+
+Repeated dock/radial changes retain the existing Quiet Gravity animation. Configuring a stopped QVariantAnimation used to recalculate its value at the previous transition's elapsed time; that overwrote the visible progress and could reduce the next duration to one millisecond. Configuration now blocks those intermediate value signals, resets elapsed time, and calculates the duration from a captured visible start. Reversals retain their current position. Reduced motion is unchanged.
+
+All eight Windows suites pass (48.38 seconds). Regression coverage checks four alternating transitions, intermediate progress in both directions, interruption/reversal continuity, and the Reduced motion endpoint. Packaged runtime smoke checks capture animated frames in both directions through the actual side-button handler and full native motion mask. Physical pen acceptance remains a hands-on check.
+
+Not published. Exact 0.3.20 notes still require Justice or Bassem approval.
+
+# Previous local candidate: 0.3.19
+
+Direct pen input classifies the selected barrel/invert button: a short press toggles visibility on release, while a 500 ms hold switches docked/floating mode once and leaves the overlay visible. Out-of-range, owner-listener failure, changing the selected button, stopping input and disabling input cancel a pending gesture. A hold does not emit a short-press action on release. Mode changes may reverse an animation already in progress.
+
+Held parent menus retain the original launching contact through nested navigation and radial-to-fan transitions. Releasing it cancels uncommitted children, including a pen contact still over a child; a completed selection keeps its queued action or modifier. Both the dock's QML opacity and native window mask retain the rail beside a child radial. Editor preview follows the same visibility rule.
+
+All eight Windows test suites pass. Helper-process checks cover short/long barrel and invert presses, duplicate channels, range exit, listener failure, disabling, selecting another button and stopping. Qt touch/pen tests cover the visible dock, parent release during a child pen contact, completed selection, nested fan selection and mode-switch animation reversal. Packaged startup also checks the native window mask includes both rail and child radial. Physical Cintiq/Surface acceptance remains a hands-on check.
+
+Not published. Exact 0.3.19 notes still require Justice or Bassem approval.
+
 # Current release: 0.3.18
 
 The editor exposes a Pen trigger row below its toolbar: an enable switch, an explicitly named Barrel button (default) / Invert or second button choice, the existing keyboard shortcut, and Pen settings for diagnostics. Selection and enable state use the existing persisted preferences and take effect immediately; saved custom selections are retained across restarts. The fresh-install defaults remain enabled with barrel selected. The pen setup dialog uses the same unambiguous labels.

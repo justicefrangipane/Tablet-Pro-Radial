@@ -187,7 +187,7 @@ void UpdateChecker::requestDownload(const QUrl& url) {
         const auto path=m_file->fileName();
         if(!m_file->commit()){fail("Could not save the verified update.");return;}
         m_readyFile=path;m_file.reset();m_hash.reset();m_downloading=false;
-        m_status="Update verified. Choose Install update when you're ready to close Radial.";emit changed();
+        m_status="Update verified. Install update will close Radial, install, and reopen it automatically.";emit changed();
     });
     emit changed();
 }
@@ -195,14 +195,16 @@ void UpdateChecker::fail(const QString& reason) {
     m_deadline.stop();m_status=reason;m_file.reset();m_hash.reset();m_downloading=false;m_readyFile.clear();emit changed();
 }
 void UpdateChecker::cancel() { if(m_reply){m_failure="Update request cancelled.";m_reply->abort();} }
-bool UpdateChecker::launchInstaller() {
-    if(!ready()||busy())return false;
+bool UpdateChecker::launchInstaller(const QString& relaunchMode) {
+    if(!ready()||busy()||m_installStarted)return false;
+    if(relaunchMode!="radial"&&relaunchMode!="docked"&&relaunchMode!="editor")return false;
     QFile file(m_readyFile);QCryptographicHash hash(QCryptographicHash::Sha256);
     if(!file.open(QIODevice::ReadOnly)||file.size()!=m_release.size||!hash.addData(&file)||hash.result().toHex()!=m_release.sha256){fail("The downloaded installer changed. Download it again.");return false;}
     file.close();
-    if(!QProcess::startDetached(m_readyFile,{"--wait-for-pid",QString::number(QCoreApplication::applicationPid())})){
+    if(!QProcess::startDetached(m_readyFile,{"--wait-for-pid",QString::number(QCoreApplication::applicationPid()),"--relaunch-mode",relaunchMode})){
         m_status="Could not start the installer. Radial is still running.";emit changed();return false;
     }
+    m_installStarted=true;m_status="Closing Radial to install the update. It will reopen automatically.";emit changed();
     return true;
 }
 }

@@ -33,7 +33,13 @@ StudioController::StudioController(QObject* parent,const QString& configDirector
     connect(&stylus_,&StylusInput::settingsChanged,this,[this]{
         QSettings prefs;prefs.setValue("penInputEnabled",stylus_.enabled());prefs.setValue("penSideButton",stylus_.selectedSideButton());
     });
+    connect(&stylus_,&StylusInput::sideButtonDown,&runtime_,&MenuSession::releaseModifiers);
     connect(&stylus_,&StylusInput::sideButtonPressed,this,[this]{runtime_.releaseModifiers();emit showRuntimeRequested(platform_.captureForegroundTarget(),true);});
+    connect(&stylus_,&StylusInput::sideButtonHeld,this,[this]{
+        runtime_.cancel();
+        emit showRuntimeRequested(platform_.captureForegroundTarget(),false);
+        runtime_.toggleDock();
+    });
     connect(&stylus_,&StylusInput::tipChanged,&platform_,&WindowPlatform::observeStylusTip);
     connect(&stylus_,&StylusInput::proximityLeft,&platform_,&WindowPlatform::finishPenHover);
     connect(&stylus_,&StylusInput::inputLost,&runtime_,&MenuSession::releaseModifiers);

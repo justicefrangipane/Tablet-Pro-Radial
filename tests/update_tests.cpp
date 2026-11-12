@@ -16,6 +16,8 @@
 #include <QQuickWindow>
 #include <QQuickItem>
 #include <QColor>
+#include <QPainter>
+#include <cmath>
 #include <QMouseEvent>
 #include <QTabletEvent>
 #include <QTouchEvent>
@@ -125,6 +127,56 @@ QDialog* notesWindow(const char* name){
     for(auto* widget:QApplication::topLevelWidgets())if(widget->objectName()==name)return qobject_cast<QDialog*>(widget);
     return nullptr;
 }
+void installHandoffUiTests(){
+    QFile self(QCoreApplication::applicationFilePath());expect(self.open(QIODevice::ReadOnly),"read executable handoff fixture");
+    const auto originalInstaller=installer;const auto fixture=self.readAll();
+    for(const QString scenario:{"radial","docked","editor","dirty-docked","cancel","failure"}){
+        QTemporaryDir temp;Network net;const auto settingsPath=temp.path()+"/updates.ini";
+        {QSettings prefs(settingsPath,QSettings::IniFormat);prefs.setValue("updates/repository","test/radial");}
+        installer=scenario=="failure"?QByteArray(2048,'x'):fixture;
+        StudioController studio(nullptr,temp.path()+"/profile",true);studio.setReducedMotion(true);
+        QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("studio",&studio);engine.rootContext()->setContextProperty("startInEditor",false);
+        engine.load(QUrl("qrc:/qml/Main.qml"));auto* editor=qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+        auto* overlay=editor->findChild<QQuickWindow*>("runtimeOverlay");overlay->resize(900,700);
+        DesktopShell shell(&studio,overlay,nullptr,true,&net,settingsPath);shell.setEditorWindow(editor);engine.rootContext()->setContextProperty("desktop",&shell);
+        int exits=0;QObject::connect(&shell,&DesktopShell::quitRequested,[&]{QMetaObject::invokeMethod(editor,"requestAppQuit");});
+        QObject::connect(&shell,&DesktopShell::exitApproved,[&]{++exits;});
+        QObject::connect(&studio,&StudioController::hideRuntimeRequested,[&]{editor->show();overlay->hide();});
+        const auto layout=[&]{editor->hide();overlay->show();if(scenario=="editor"){overlay->hide();editor->show();}};
+        if(scenario.contains("docked"))studio.runtime()->toggleDock();layout();
+        net.queue.append({200,encode(release("9.0.0"))});shell.showUpdates();
+        auto* dialog=notesWindow("updatesDialog");expect(dialog,"update dialog exists");
+        auto* download=dialog->findChild<QPushButton*>("downloadUpdateButton");auto* install=dialog->findChild<QPushButton*>("installUpdateButton");
+        expect(QTest::qWaitFor([&]{return download->isVisible()&&download->isEnabled();},2000),"test release available");
+        net.queue.append({200,installer});download->click();
+        expect(QTest::qWaitFor([&]{return install->isVisible();},5000),"verified installer ready for a single click");
+        const auto receipt=temp.path()+"/handoff.json";qputenv("TABLETPRO_TEST_INSTALL_RECEIPT",receipt.toUtf8());
+        if(scenario=="dirty-docked"||scenario=="cancel")studio.renameSelected("Unapplied update test");
+        install->click();
+        if(scenario=="dirty-docked"||scenario=="cancel"){
+            expect(exits==0&&!QFile::exists(receipt)&&studio.dirty(),"draft is protected before updater starts");
+            if(scenario=="cancel"){
+                auto* prompt=editor->findChild<QObject*>("unappliedDialog");QMetaObject::invokeMethod(prompt,"close");QTest::qWait(220);
+                expect(exits==0&&!QFile::exists(receipt)&&studio.dirty(),"dismissing draft prompt cancels installation");
+                layout();install->click();
+                expect(prompt->property("visible").toBool(),"install can be retried after cancelling the prompt");
+            }
+            QMetaObject::invokeMethod(editor->findChild<QObject*>("applyAndClose"),"clicked",Qt::DirectConnection);
+            expect(!studio.dirty(),"draft is applied before installation");
+        }
+        if(scenario=="failure")expect(exits==0&&install->isEnabled()&&overlay->isVisible(),"failed installer launch leaves Radial open for retry");
+        else {
+            expect(exits==1&&!install->isEnabled(),"one Install click hands off and requests a clean app exit");
+            install->click();expect(exits==1,"repeated install clicks cannot launch another installer");
+            expect(QTest::qWaitFor([&]{return QFile::exists(receipt);},5000),"real detached installer process receives handoff");
+            QFile received(receipt);expect(received.open(QIODevice::ReadOnly),"handoff receipt readable");const auto arguments=QJsonDocument::fromJson(received.readAll()).array();
+            const auto mode=scenario.contains("docked")?"docked":scenario=="editor"?"editor":"radial";
+            expect(arguments==QJsonArray{"--wait-for-pid",QString::number(QCoreApplication::applicationPid()),"--relaunch-mode",mode},"handoff carries owning app PID and original layout");
+        }
+        qunsetenv("TABLETPRO_TEST_INSTALL_RECEIPT");engine.rootContext()->setContextProperty("desktop",static_cast<QObject*>(nullptr));
+    }
+    installer=originalInstaller;
+}
 void whatsNewTests(){
     QTemporaryDir temp;StudioController studio(nullptr,temp.path()+"/profile",true);QQuickWindow overlay;
     const auto realVersion=QCoreApplication::applicationVersion();
@@ -180,14 +232,21 @@ void parentPointerUiTests(){
     int reports=0;QObject::connect(studio.runtime(),&MenuSession::actionReported,[&]{++reports;});
     QTest::touchEvent(overlay,finger).press(1,launch,overlay);QTest::qWait(340);
     expect(studio.runtime()->parentMenuOpen(),"actual touch hold opens a parent radial");
+    auto* rail=overlay->findChild<QQuickItem*>("overlayRail");auto* surface=overlay->findChild<RadialSurface*>("runtimeSurface");
+    expect(rail&&surface&&rail->isVisible()&&rail->opacity()==1&&surface->opacity()==1,"docked housing and buttons stay visible beside the held child radial");
+    expect(overlay->grabWindow().save(QDir::currentPath()+"/docked-held-parent.png"),"docked parent and child render together");
     QVariantMap bold;for(const auto& value:studio.runtime()->parentButtons())if(value.toMap()["id"]=="text.bold")bold=value.toMap();
     const QPointF at(bold["cx"].toDouble(),bold["cy"].toDouble());
     QPointingDevice penDevice("parent test pen",4001,QInputDevice::DeviceType::Stylus,QPointingDevice::PointerType::Pen,QInputDevice::Capability::Position|QInputDevice::Capability::Pressure,1,1);
     const auto pen=[&](QEvent::Type type){const bool up=type==QEvent::TabletRelease;QTabletEvent event(type,&penDevice,at,overlay->mapToGlobal(at.toPoint()),up?0:0.5,0,0,0,0,0,Qt::NoModifier,Qt::LeftButton,up?Qt::NoButton:Qt::LeftButton);QCoreApplication::sendEvent(overlay,&event);QCoreApplication::processEvents();};
     pen(QEvent::TabletPress);expect(studio.runtime()->parentSelectedId()=="text.bold","pen selects a child while launching touch remains down");
     QTest::touchEvent(overlay,finger).release(1,launch,overlay);
-    expect(studio.runtime()->parentMenuOpen()&&reports==0,"launching touch release leaves the pen selection intact");
-    pen(QEvent::TabletRelease);expect(!studio.runtime()->parentMenuOpen()&&reports==1,"actual pen release commits exactly one child action");
+    expect(!studio.runtime()->parentMenuOpen()&&reports==0&&overlay->isVisible(),"parent release closes children and leaves the dock visible");
+    pen(QEvent::TabletRelease);expect(!studio.runtime()->active()&&reports==0,"late pen release cannot choose a child after the parent closes");
+    QTest::touchEvent(overlay,finger).press(1,launch,overlay);QTest::qWait(340);
+    pen(QEvent::TabletPress);pen(QEvent::TabletRelease);
+    expect(!studio.runtime()->parentMenuOpen()&&reports==1&&overlay->isVisible(),"pen can choose a child while parent stays held and dock stays visible");
+    QTest::touchEvent(overlay,finger).release(1,launch,overlay);
     QTest::touchEvent(overlay,finger).press(2,launch,overlay);
     QTest::touchEvent(overlay,finger).move(2,QPoint(240,350),overlay);QTest::qWait(25);
     expect(!studio.runtime()->parentMenuOpen()&&studio.runtime()->childButtons().size()==6,"actual touch slide opens the original fan");
@@ -201,13 +260,12 @@ void parentPointerUiTests(){
     QVariantMap tools;for(const auto& value:studio.runtime()->buttons())if(value.toMap()["id"]=="tools")tools=value.toMap();
     const QPoint toolsAt(tools["dockX"].toInt(),tools["dockY"].toInt());
     QTest::touchEvent(overlay,finger).press(3,toolsAt,overlay);QTest::qWait(340);
-    QTest::touchEvent(overlay,finger).release(3,toolsAt,overlay);
     for(const auto& value:studio.runtime()->parentButtons())if(value.toMap()["id"]=="text")text=value.toMap();
     const QPoint textAt(text["cx"].toInt(),text["cy"].toInt());const auto angle=text["angle"].toDouble();
-    QTest::touchEvent(overlay,finger).press(4,textAt,overlay);
+    QTest::touchEvent(overlay,finger).stationary(3).press(4,textAt,overlay);
     expect(studio.runtime()->parentSelectedId()=="text","touch selects the nested parent before sliding");
     for(int step=20;step<=50;step+=10){
-        QTest::touchEvent(overlay,finger).move(4,textAt+QPoint(qRound(step*std::cos(angle)),qRound(step*std::sin(angle))),overlay);
+        QTest::touchEvent(overlay,finger).stationary(3).move(4,textAt+QPoint(qRound(step*std::cos(angle)),qRound(step*std::sin(angle))),overlay);
         QTest::qWait(20); // Deliver compressed touch moves at frame boundaries.
     }
     const bool nestedFan=QTest::qWaitFor([&]{return !studio.runtime()->parentMenuOpen()&&studio.runtime()->childButtons().size()==6;},100);
@@ -215,8 +273,134 @@ void parentPointerUiTests(){
     expect(nestedFan,"sliding a nested parent out of a held radial opens its fan");
     for(const auto& value:studio.runtime()->childButtons())if(value.toMap()["id"]=="text.bold")bold=value.toMap();
     const QPoint nestedBold(bold["cx"].toInt(),bold["cy"].toInt());
-    QTest::touchEvent(overlay,finger).move(4,nestedBold,overlay);QTest::touchEvent(overlay,finger).release(4,nestedBold,overlay);
+    QTest::touchEvent(overlay,finger).stationary(3).move(4,nestedBold,overlay);QTest::touchEvent(overlay,finger).stationary(3).release(4,nestedBold,overlay);
     expect(!studio.runtime()->active()&&reports==3,"nested radial-to-fan transition retains touch ownership until release");
+    QTest::touchEvent(overlay,finger).release(3,toolsAt,overlay);
+    overlay->hide();
+}
+void inPlaceParentUiTests(){
+    QTemporaryDir temp;StudioController studio(nullptr,temp.path()+"/profile",true);studio.setReducedMotion(true);
+    QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("studio",&studio);engine.rootContext()->setContextProperty("startInEditor",false);
+    engine.load(QUrl("qrc:/qml/Main.qml"));auto* editor=qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+    auto* overlay=editor->findChild<QQuickWindow*>("runtimeOverlay");overlay->resize(1000,800);overlay->show();QTest::qWait(30);
+    auto* session=studio.runtime();session->setRadialCenter(480,400);
+    const auto point=[&](const QString& id,bool child=false){for(const auto& value:child?session->parentButtons():session->buttons()){const auto b=value.toMap();if(b["id"]==id)return QPoint(qRound(b["cx"].toDouble()),qRound(b["cy"].toDouble()));}throw std::runtime_error("missing UI button");};
+    int reports=0;QObject::connect(session,&MenuSession::actionReported,[&]{++reports;});
+    QTest::mouseClick(overlay,Qt::LeftButton,Qt::NoModifier,point("tools"));
+    expect(session->parentInPlace()&&session->parentCenter()==session->radialCenter(),"mouse tap replaces the current floating ring");
+    auto* surface=overlay->findChild<RadialSurface*>("runtimeSurface");
+    expect(surface->opacity()==0&&session->childButtons().isEmpty(),"child ring covers the root without a side fan");
+    const auto start=session->parentCenter().toPoint();QTest::mousePress(overlay,Qt::LeftButton,Qt::NoModifier,start);
+    for(int i=1;i<=18;++i){QTest::mouseMove(overlay,start+QPoint(i*5,i*2));QTest::qWait(4);}
+    QTest::mouseRelease(overlay,Qt::LeftButton,Qt::NoModifier,start+QPoint(90,36));
+    expect(session->parentInPlace()&&!session->dragging()&&QLineF(session->parentCenter(),start+QPoint(90,36)).length()<1,"dragging a child-ring center keeps navigation and follows the pointer");
+    QTest::mouseClick(overlay,Qt::LeftButton,Qt::NoModifier,session->parentCenter().toPoint());
+    expect(!session->active()&&!overlay->property("menuOpen").toBool()&&surface->opacity()==1,"child center tap returns to the root without opening settings");
+    auto* finger=QTest::createTouchDevice();const auto tools=point("tools");
+    QTest::touchEvent(overlay,finger).press(12,tools,overlay);QTest::touchEvent(overlay,finger).release(12,tools,overlay);
+    expect(session->parentInPlace(),"touch tap opens children in place");session->parentBack();
+    const auto center=session->radialCenter();const auto axis=QPointF(tools)-center;const auto delta=axis*(45/std::hypot(axis.x(),axis.y()));const auto out=tools+delta.toPoint();
+    QTest::touchEvent(overlay,finger).press(12,tools,overlay);QTest::touchEvent(overlay,finger).move(12,out,overlay);QTest::qWait(25);QTest::touchEvent(overlay,finger).release(12,out,overlay);
+    expect(session->parentInPlace()&&session->parentCenter()==center&&reports==0,"touch slide release leaves the replaced child ring open");
+    QTest::mouseClick(overlay,Qt::LeftButton,Qt::NoModifier,point("text",true));
+    expect(session->parentLabel()=="Text"&&session->parentCenter()==center,"nested tap reuses the same ring");
+    const auto bold=point("text.bold",true);QPointingDevice pen("in-place child pen",4002,QInputDevice::DeviceType::Stylus,QPointingDevice::PointerType::Pen,QInputDevice::Capability::Position|QInputDevice::Capability::Pressure,1,1);
+    for(const auto type:{QEvent::TabletPress,QEvent::TabletRelease}){const bool up=type==QEvent::TabletRelease;QTabletEvent e(type,&pen,bold,overlay->mapToGlobal(bold),up?0:.5,0,0,0,0,0,Qt::NoModifier,Qt::LeftButton,up?Qt::NoButton:Qt::LeftButton);QCoreApplication::sendEvent(overlay,&e);QCoreApplication::processEvents();}
+    expect(reports==1&&!session->active()&&!overlay->isVisible(),"pen child selection dispatches once and closes the floating menu");
+}
+void textureReuseTests(){
+    MenuSession session(true,nullptr);session.setViewport(700,600);session.setProfile(radial::defaultProfile());
+    RadialSurface surface;QImage image(700,600,QImage::Format_ARGB32_Premultiplied);
+    const auto render=[&]{image.fill(Qt::transparent);surface.setButtons(session.buttons());QPainter painter(&image);surface.paint(&painter);};
+    render();const auto first=image;const auto builds=surface.textureBuildCount();
+    for(int i=0;i<80;++i){session.moveRadialCenter(300+i,260+i/2);render();}
+    expect(surface.textureBuildCount()==builds&&image!=first,"many drag frames move rendered pixels without rebuilding their icon texture");
+    surface.setDockProgress(.4);render();expect(surface.textureBuildCount()==builds,"cached particles retain correct movable geometry for mode transitions");
+    auto profile=radial::defaultProfile();profile.nodes.at("brush").icon="eraser";session.setProfile(profile);render();
+    expect(surface.textureBuildCount()==builds+1,"actual artwork edits still rebuild the texture");
+}
+void dockLandingTests(){
+    MenuSession session(true,nullptr);RadialSurface surface;surface.setContinuousRail(true);
+    for(const bool sparse:{false,true}){
+        auto profile=radial::defaultProfile();
+        if(sparse){profile.rootSlots[0].reset();profile.rootSlots[5].reset();}
+        session.setProfile(profile);
+        for(const int height:{480,768,1080})for(const qreal density:{1.0,1.5,2.0}){
+            session.setViewport(720,height);surface.setButtons(session.buttons());
+            const auto rail=session.dockBounds();
+            const auto render=[&](qreal progress){
+                surface.setDockProgress(progress);
+                QImage image(qCeil(720*density),qCeil(height*density),QImage::Format_ARGB32_Premultiplied);
+                image.setDevicePixelRatio(density);image.fill(Qt::transparent);QPainter painter(&image);surface.paint(&painter);return image;
+            };
+            const auto guide=render(.4);
+            // Sample the empty header, away from the button halos and particles.
+            int strongestX=-1,strongest=0;
+            for(int x=0;x<int(25*density);++x){int alpha=0;
+                for(int y=qCeil((rail.top()+20)*density);y<qFloor((rail.top()+33)*density);++y)alpha+=qAlpha(guide.pixel(x,y));
+                if(alpha>strongest){strongest=alpha;strongestX=x;}
+            }
+            expect(strongest>100&&std::abs((strongestX+.5)/density-(rail.left()+1.5))<1,"assembly guide coincides with the finished rail border, including sparse menus and display scaling");
+            const auto landing=render(.99999),finished=render(1);
+            expect(landing==finished,"landed icon pixels do not jump when the transition finishes");
+            for(const auto& value:session.buttons()){
+                const auto b=value.toMap();const QPointF at(b["dockX"].toDouble(),b["dockY"].toDouble());
+                expect(rail.contains(QRectF(at-QPointF(22,22),QSizeF(44,44)))&&surface.hitRoot(at.x(),at.y())==b["id"].toString(),"landed artwork and final hit targets remain inside the same housing");
+            }
+        }
+    }
+}
+void displayDensityTests(){
+    RadialSurface surface;surface.setSize({256,256});surface.setReducedMotion(true);
+    QVariantList buttons;const QStringList icons={"select","color","type","settings","undo","Ctrl"};
+    const QStringList captions={"Select","Color","Text","Settings","Undo",""};
+    for(int i=0;i<6;++i){const qreal angle=-M_PI/2+i*M_PI/3;
+        buttons.append(QVariantMap{{"id",QString::number(i)},{"icon",icons[i]},{"caption",captions[i]},
+            {"slot",i},{"angle",angle},{"cx",128+70*std::cos(angle)},{"cy",128+70*std::sin(angle)},
+            {"dockX",128},{"dockY",30+i*38}});
+    }
+    surface.setButtons(buttons);
+    const auto render=[&](qreal scale){QImage result(qCeil(256*scale),qCeil(256*scale),QImage::Format_ARGB32_Premultiplied);
+        result.setDevicePixelRatio(scale);result.fill(Qt::transparent);QPainter p(&result);surface.paint(&p);return result;};
+    const auto detail=[](const QImage& image,QRectF logical){const qreal scale=image.devicePixelRatio();
+        const QRect area(QPoint(qRound(logical.x()*scale),qRound(logical.y()*scale)),QSize(qRound(logical.width()*scale),qRound(logical.height()*scale)));
+        double energy=0;for(int y=area.top();y<area.bottom();++y)for(int x=area.left();x<area.right();++x){
+            const double value=qGray(image.pixel(x,y));const double dx=value-qGray(image.pixel(x+1,y)),dy=value-qGray(image.pixel(x,y+1));energy+=dx*dx+dy*dy;
+        }return energy;};
+    const auto baseline=render(1);const auto output=qEnvironmentVariable("TABLETPRO_DENSITY_OUTPUT");if(!output.isEmpty())QDir().mkpath(output);
+    for(const qreal scale:{1.25,1.5,2.0,3.0,1.0}){
+        const auto native=render(scale);const auto count=surface.textureBuildCount();
+        expect(render(scale)==native&&surface.textureBuildCount()==count,"unchanged display density reuses cached artwork and identical pixels");
+        if(scale>1){auto stretched=baseline.scaled(native.size(),Qt::IgnoreAspectRatio,Qt::SmoothTransformation);stretched.setDevicePixelRatio(scale);
+            const auto iconNative=detail(native,{114,39,28,26}),iconStretched=detail(stretched,{114,39,28,26});
+            const auto textNative=detail(native,{104,65,48,14}),textStretched=detail(stretched,{104,65,48,14});
+            std::cout<<"Density "<<scale<<": icon detail "<<iconNative/iconStretched<<", text detail "<<textNative/textStretched<<"\n";
+            expect(iconNative>iconStretched*1.05&&textNative>textStretched*1.05,"native density preserves sharper icon and caption edges than enlarged low-resolution artwork");
+        }else expect(native==baseline,"returning to 100 percent restores the original dimensions and pixels");
+        expect(qAlpha(native.pixel(qRound(128*scale),qRound(35*scale)))>0&&qAlpha(native.pixel(qRound(128*scale),qRound(25*scale)))==0,"display density leaves the logical menu footprint unchanged");
+        if(!output.isEmpty())expect(native.save(output+QString("/radial-%1.png").arg(qRound(scale*100))),"density preview saved");
+        surface.setDockProgress(1);const auto rail=render(scale);expect(surface.textureBuildCount()==count,"docked icons reuse native-density artwork");
+        if(!output.isEmpty())rail.save(output+QString("/dock-%1.png").arg(qRound(scale*100)));
+        surface.setDockProgress(0);
+    }
+}
+void sideButtonModeUiTests(){
+    QTemporaryDir temp;StudioController studio(nullptr,temp.path()+"/profile",true);studio.setReducedMotion(true);
+    QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("studio",&studio);engine.rootContext()->setContextProperty("startInEditor",false);
+    engine.load(QUrl("qrc:/qml/Main.qml"));auto* editor=qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+    auto* overlay=editor->findChild<QQuickWindow*>("runtimeOverlay");overlay->resize(900,700);overlay->show();QTest::qWait(30);
+    int shows=0,toggles=0;
+    QObject::connect(&studio,&StudioController::showRuntimeRequested,[&](quintptr,bool toggle){++shows;if(toggle)++toggles;if(toggle&&overlay->isVisible())overlay->hide();else overlay->show();});
+    overlay->setProperty("menuOpen",true);
+    studio.stylus()->sideButtonDown();expect(overlay->isVisible()&&shows==0,"side-button down waits without hiding the wheel");
+    studio.stylus()->sideButtonHeld();
+    expect(studio.runtime()->docked()&&overlay->isVisible()&&!overlay->property("menuOpen").toBool()&&toggles==0,"long hold docks the visible menu and exits settings");
+    studio.stylus()->sideButtonHeld();expect(!studio.runtime()->docked()&&overlay->isVisible()&&toggles==0,"next hold returns the dock to a visible radial");
+    studio.stylus()->sideButtonPressed();expect(!overlay->isVisible()&&toggles==1,"quick side-button press still hides the menu");
+    studio.stylus()->sideButtonHeld();expect(studio.runtime()->docked()&&overlay->isVisible(),"long hold also switches and shows a hidden menu");
+    studio.setReducedMotion(false);studio.runtime()->setDurationMs(250);
+    studio.stylus()->sideButtonHeld();QTest::qWait(40);studio.stylus()->sideButtonHeld();QTest::qWait(300);
+    expect(studio.runtime()->docked()&&!studio.runtime()->transitioning()&&overlay->isVisible(),"another hold can reverse a mode transition without hiding it");
     overlay->hide();
 }
 void selectionDismissalUiTests(){
@@ -406,6 +590,7 @@ void trayTests(){
         for(const auto& value:studio.runtime()->buttons()){
             const auto b=value.toMap();expect(b["dockX"].toDouble()-22==rail->x()&&b["dockX"].toDouble()+22==rail->x()+rail->width(),"tool and rail edges align exactly");
         }
+        expect(rail->mapRectToScene(rail->boundingRect())==studio.runtime()->dockBounds(),"visible housing uses the same layout as the landing renderer");
     }
     QMetaObject::invokeMethod(railToggle,"clicked",Qt::DirectConnection);
     expect(settings->isVisible()&&!surface->isVisible()&&!surface->isEnabled()&&!floatingOptions->isVisible(),"settings replace drawing tools without a flyout or hidden action targets");
@@ -485,6 +670,11 @@ void trayTests(){
     QTest::touchEvent(overlay,testFinger).move(1,touchStart+QPoint(65,35),overlay);
     QTest::touchEvent(overlay,testFinger).release(1,touchStart+QPoint(65,35),overlay);
     expect(QLineF(studio.runtime()->radialCenter(),touchStart+QPointF(65,35)).length()<1&&!overlay->property("menuOpen").toBool(),"touch drags the center without opening settings");
+    studio.runtime()->moveRadialCenter(450,350);
+    const auto longDrag=studio.runtime()->radialCenter();sendMouse(QEvent::MouseButtonPress,longDrag);
+    for(int i=1;i<=35;++i){const auto at=longDrag+QPointF(i*4,i*2);sendMouse(QEvent::MouseMove,at);if(i>3)expect(studio.runtime()->dragging()&&QLineF(studio.runtime()->radialCenter(),at).length()<1,"long drag tracks every sample without cumulative jumps");}
+    sendMouse(QEvent::MouseButtonRelease,longDrag+QPointF(140,70));
+    expect(!studio.runtime()->dragging()&&!overlay->property("menuOpen").toBool(),"ending a long drag restores idle mode without a tap");
     studio.runtime()->moveRadialCenter(-999,-999);expect(studio.runtime()->radialCenter()==QPointF(104,104),"drag placement keeps the radial on screen near the edge");
     auto* tip=overlay->findChild<QQuickWindow*>("centerHoverTip");expect(tip&&tip!=overlay,"tooltip has its own native window outside the overlay mask");
     expect(tip->flags().testFlag(Qt::WindowStaysOnTopHint)&&tip->flags().testFlag(Qt::WindowDoesNotAcceptFocus)&&tip->flags().testFlag(Qt::WindowTransparentForInput),"tooltip is topmost without taking focus or pen input");
@@ -521,15 +711,21 @@ void trayTests(){
 }
 }
 int main(int argc,char** argv){
+    if(argc==5&&std::strcmp(argv[1],"--wait-for-pid")==0&&!qEnvironmentVariableIsEmpty("TABLETPRO_TEST_INSTALL_RECEIPT")){
+        QSaveFile receipt(qEnvironmentVariable("TABLETPRO_TEST_INSTALL_RECEIPT"));QJsonArray args;for(int i=1;i<argc;++i)args.append(QString::fromLocal8Bit(argv[i]));
+        return receipt.open(QIODevice::WriteOnly)&&receipt.write(QJsonDocument(args).toJson())>0&&receipt.commit()?0:1;
+    }
     QApplication app(argc,argv);app.setQuitOnLastWindowClosed(false);app.setOrganizationName("TabletProTests");app.setApplicationName("RadialUpdates");app.setApplicationVersion(TABLETPRO_VERSION);QQuickStyle::setStyle("Basic");
     QTemporaryDir settings;QStandardPaths::setTestModeEnabled(true);QSettings::setDefaultFormat(QSettings::IniFormat);QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,settings.path());
     try{
-        if(app.arguments().contains("--drag-ui-only")){
+        if(app.arguments().contains("--density-only")){
+            displayDensityTests();
+        }else if(app.arguments().contains("--drag-ui-only")){
             qmlRegisterType<RadialSurface>("TabletPro",1,0,"RadialSurface");
             qmlRegisterUncreatableType<MenuSession>("TabletPro",1,0,"MenuSession","Provided");
             qmlRegisterUncreatableType<StylusInput>("TabletPro",1,0,"StylusInput","Provided");
             editorDragUiTests();
-        }else{parseTests();networkTests();trayTests();editorPenTriggerUiTests();selectionDismissalUiTests();parentPointerUiTests();editorDragUiTests();whatsNewTests();}
+        }else{parseTests();networkTests();trayTests();inPlaceParentUiTests();textureReuseTests();dockLandingTests();displayDensityTests();installHandoffUiTests();editorPenTriggerUiTests();selectionDismissalUiTests();parentPointerUiTests();sideButtonModeUiTests();editorDragUiTests();whatsNewTests();}
         std::cout<<checks<<" tray/update checks passed\n";return 0;
     }catch(const std::exception& e){std::cerr<<"FAILED: "<<e.what()<<'\n';return 1;}
 }

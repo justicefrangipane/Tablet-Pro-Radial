@@ -40,6 +40,25 @@ void writeBytes(const QString& path, const QByteArray& bytes) {
     QFile file(path);
     check(file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size(), "write test profile");
 }
+void modeTransitionTests(){
+    const auto wait=[](int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();};
+    MenuSession session(true,nullptr);session.setDurationMs(400);
+    for(int cycle=0;cycle<4;++cycle){
+        const auto start=session.dockProgress();session.toggleDock();
+        check(session.transitioning()&&session.dockProgress()==start,"every mode change starts at the visible frame");
+        wait(110);const auto middle=session.dockProgress();
+        check(session.transitioning()&&middle>0&&middle<1,"repeated dock and radial changes both animate");
+        check(session.docked()?middle>start:middle<start,"mode animation travels in the requested direction");
+        wait(400);
+        check(!session.transitioning()&&session.dockProgress()==(session.docked()?1:0),"each mode animation reaches its endpoint");
+    }
+    session.toggleDock();wait(150);const auto before=session.dockProgress();session.toggleDock();
+    check(before>0&&before<1&&session.dockProgress()==before,"mid-flight reversal keeps the currently visible progress");
+    wait(35);check(session.dockProgress()<before,"reversed transition travels back immediately");
+    wait(450);check(!session.transitioning()&&session.dockProgress()==0,"reversed transition settles to radial");
+    session.setReducedMotion(true);session.toggleDock();
+    check(!session.transitioning()&&session.dockProgress()==1,"Reduced motion still changes modes immediately");
+}
 void parentMenuTests(const QString& directory){
     const auto wait=[](int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();};
     MenuSession session(true,nullptr);session.setProfile(radial::legacyDefaultProfile());session.setViewport(1000,800);session.setReducedMotion(true);session.toggleDock();
@@ -52,9 +71,14 @@ void parentMenuTests(const QString& directory){
     auto bold=button(session,"text.bold",true);
     session.parentPointerPressed(-1,bold["cx"].toDouble(),bold["cy"].toDouble());
     session.pointerReleased(1,bold["cx"].toDouble(),bold["cy"].toDouble());
-    check(session.parentMenuOpen()&&reports==0,"launching finger lift cannot select or close the pen's child menu");
+    check(!session.parentMenuOpen()&&!session.active()&&reports==0,"launching finger lift closes the child menu without choosing a child");
     session.parentPointerReleased(-1,bold["cx"].toDouble(),bold["cy"].toDouble());
-    check(!session.active()&&reports==1,"pen can select a child independently of the launching finger");
+    check(!session.active()&&reports==0,"late pen lift after parent release cannot select a hidden child");
+    session.pointerPressed(1,x,y);wait(330);bold=button(session,"text.bold",true);
+    session.parentPointerPressed(-1,bold["cx"].toDouble(),bold["cy"].toDouble());
+    session.parentPointerReleased(-1,bold["cx"].toDouble(),bold["cy"].toDouble());
+    session.pointerReleased(1,x,y);
+    check(!session.active()&&reports==1,"pen can choose a child while the launching finger stays held");
     session.pointerPressed(2,x,y);session.pointerMoved(2,x+42,y);wait(330);
     check(!session.parentMenuOpen()&&session.childButtons().size()==6,"slide opens the original fan and disarms delayed pen relocation");
     session.pointerReleased(2,x+42,y);check(!session.active()&&reports==1,"neutral fan release closes without an action");
@@ -64,7 +88,9 @@ void parentMenuTests(const QString& directory){
     session.pointerPressed(4,tools["dockX"].toDouble(),tools["dockY"].toDouble());wait(330);
     auto text=button(session,"text",true);session.parentPointerPressed(5,text["cx"].toDouble(),text["cy"].toDouble());session.parentPointerReleased(5,text["cx"].toDouble(),text["cy"].toDouble());
     check(session.parentLabel()=="Text"&&session.parentButtons().size()==6,"existing nested parents open their own radial by tapping");
-    session.parentBack();check(session.parentButtons().size()==4,"Back returns to the previous parent menu");session.cancel();
+    session.parentBack();check(session.parentButtons().size()==4,"Back returns to the previous parent menu");
+    session.pointerReleased(4,tools["dockX"].toDouble(),tools["dockY"].toDouble());
+    check(!session.active(),"the original parent release still closes children after navigating Back");
     session.pointerPressed(6,tools["dockX"].toDouble(),tools["dockY"].toDouble());
     session.pointerMoved(6,tools["dockX"].toDouble()+42,tools["dockY"].toDouble());
     text=button(session,"text",true);session.pointerMoved(6,text["cx"].toDouble(),text["cy"].toDouble());wait(330);
@@ -74,10 +100,12 @@ void parentMenuTests(const QString& directory){
     auto withModifier=radial::defaultProfile();
     withModifier.nodes.at("tools").children[4]="modifier.Alt";withModifier.rootSlots[2].reset();
     session.setProfile(withModifier);session.toggleDock();const auto modifierParent=button(session,"tools");
-    const auto openModifierParent=[&]{session.pointerPressed(8,modifierParent["dockX"].toDouble(),modifierParent["dockY"].toDouble());wait(330);session.pointerReleased(8,modifierParent["dockX"].toDouble(),modifierParent["dockY"].toDouble());};
+    const auto openModifierParent=[&]{session.pointerPressed(8,modifierParent["dockX"].toDouble(),modifierParent["dockY"].toDouble());wait(330);};
     openModifierParent();auto alt=button(session,"modifier.Alt",true);
     session.parentPointerPressed(9,500,400);session.parentPointerReleased(9,alt["cx"].toDouble(),alt["cy"].toDouble());
     check(!session.active()&&session.heldModifiers().contains("Alt"),"coalesced release into a child modifier arms the next pen stroke");
+    session.pointerReleased(8,modifierParent["dockX"].toDouble(),modifierParent["dockY"].toDouble());
+    check(session.heldModifiers().contains("Alt"),"releasing the parent after a completed modifier selection preserves the selected hold");
     session.finishNextStroke();check(session.heldModifiers().isEmpty(),"child modifier releases after its pen stroke");
     openModifierParent();alt=button(session,"modifier.Alt",true);
     session.parentPointerPressed(9,alt["cx"].toDouble(),alt["cy"].toDouble());session.parentPointerReleased(9,alt["cx"].toDouble(),alt["cy"].toDouble());
@@ -105,6 +133,30 @@ void parentMenuTests(const QString& directory){
     check(editor.selectedParentId()==parent&&radial::validate(editor.draft()).empty(),"Add parent and Add child build a valid new radial in an empty main slot");
     editor.makeParent();editor.addNextButton(true);editor.addNextButton(true);
     check(!editor.canAddParent(),"editor prevents a fifth parent level");
+}
+void inPlaceParentTests(){
+    MenuSession session(true,nullptr);session.setProfile(radial::defaultProfile());session.setViewport(1200,900);session.setRadialCenter(460,420);
+    const auto center=session.radialCenter();const auto tools=button(session,"tools");
+    const QPointF at(tools["cx"].toDouble(),tools["cy"].toDouble());const double angle=tools["angle"].toDouble();
+    int reports=0;QObject::connect(&session,&MenuSession::actionReported,[&]{++reports;});
+    session.pointerPressed(1,at.x(),at.y());session.pointerReleased(1,at.x(),at.y());
+    check(session.parentInPlace()&&session.parentCenter()==center&&session.childButtons().isEmpty(),"floating parent tap replaces the existing ring at its exact center");
+    const auto text=button(session,"text",true);const QPointF textAt(text["cx"].toDouble(),text["cy"].toDouble());
+    session.pointerPressed(1,textAt.x(),textAt.y());session.pointerReleased(1,textAt.x(),textAt.y());
+    check(session.parentLabel()=="Text"&&session.parentCenter()==center&&reports==0,"reusing the pointer can tap a nested parent without dismissing or dispatching");
+    session.parentBack();check(session.parentLabel()=="Tools"&&session.parentCenter()==center,"Back restores the parent ring in place");
+    check(session.beginRadialDrag(),"in-place child menu allows center dragging");session.moveRadialCenter(600,470);session.endRadialDrag();
+    check(session.parentCenter()==QPointF(600,470)&&session.radialCenter()==session.parentCenter(),"children and root move together without changing navigation");
+    session.parentBack();check(!session.active()&&session.radialCenter()==QPointF(600,470),"returning to the root preserves its dragged position");
+    const auto movedTools=button(session,"tools");const QPointF start(movedTools["cx"].toDouble(),movedTools["cy"].toDouble());
+    session.pointerPressed(2,start.x(),start.y());const auto out=start+QPointF(45*std::cos(angle),45*std::sin(angle));session.pointerMoved(2,out.x(),out.y());
+    check(session.parentInPlace()&&session.parentCenter()==session.radialCenter()&&session.childButtons().isEmpty(),"outward pull replaces the floating ring instead of opening a side fan");
+    session.pointerReleased(2,out.x(),out.y());check(session.parentInPlace()&&reports==0,"opening slide release leaves children available without selecting one");
+    const auto child=button(session,"text",true);const double a=child["angle"].toDouble();const QPointF p(child["cx"].toDouble(),child["cy"].toDouble());
+    session.pointerPressed(2,p.x(),p.y());session.pointerReleased(2,p.x()+45*std::cos(a),p.y()+45*std::sin(a));
+    check(session.parentInPlace()&&session.parentLabel()=="Text"&&reports==0,"coalesced nested slide opens in place and consumes only its opening contact");
+    const auto bold=button(session,"text.bold",true);session.pointerPressed(2,bold["cx"].toDouble(),bold["cy"].toDouble());session.pointerReleased(2,bold["cx"].toDouble(),bold["cy"].toDouble());
+    check(!session.active()&&reports==1&&session.status()=="Preview: Ctrl+B","a subsequent child tap dispatches exactly once");
 }
 void reparentTests(const QString& directory){
     StudioController editor(nullptr,directory+"/reparent",true);
@@ -458,7 +510,7 @@ void invocationGeometryTests() {
     const auto tx=text["cx"].toDouble(),ty=text["cy"].toDouble();
     session.pointerPressed(4,tx,ty);
     session.pointerMoved(4,tx+43*std::cos(radians),ty+43*std::sin(radians));
-    check(session.active() && session.childButtons().size() == 6, "edge-clamped invocation supports a full Text fan");
+    check(session.parentInPlace() && session.parentButtons().size() == 6 && session.parentCenter()==session.radialCenter(), "edge-clamped invocation replaces the Text ring in place");
     session.setViewport(300,240);
     check(!session.active() && session.radialCenter() == QPointF(150,120), "small viewport clamps anchor and cancels active fan");
     session.setViewport(std::numeric_limits<qreal>::quiet_NaN(),900);
@@ -626,6 +678,8 @@ int main(int argc, char** argv) {
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, temporary.path() + "/settings");
     int result = EXIT_SUCCESS;
     try {
+        modeTransitionTests();
+        inPlaceParentTests();
         parentMenuTests(temporary.path()); reparentTests(temporary.path()); modifierTests(temporary.path()); codecTests(); testDocumentCodecTests(); controllerTests(temporary.path()); testDocumentControllerTests(temporary.path()); sessionTests(); invocationGeometryTests(); compactDockFanTests(); queuedSessionTests();
         std::cout << "PASS: " << checks << " application integration checks\n";
     } catch (const std::exception& error) {

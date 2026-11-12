@@ -50,8 +50,8 @@ QIcon DesktopShell::icon(bool update) {
     }
     return result;
 }
-DesktopShell::DesktopShell(StudioController* studio,QQuickWindow* overlay,QObject* parent,bool testMode)
-    :QObject(parent),m_studio(studio),m_overlay(overlay),m_updates(this),m_tray(icon(),this) {
+DesktopShell::DesktopShell(StudioController* studio,QQuickWindow* overlay,QObject* parent,bool testMode,QNetworkAccessManager* updateNetwork,const QString& updateSettings)
+    :QObject(parent),m_studio(studio),m_overlay(overlay),m_updates(this,updateSettings,updateNetwork),m_tray(icon(),this) {
     m_trayAvailable=QSystemTrayIcon::isSystemTrayAvailable();
     auto* title=m_menu.addAction("Tablet Pro Radial "+QCoreApplication::applicationVersion());title->setEnabled(false);
     m_menu.addSeparator();
@@ -84,8 +84,12 @@ DesktopShell::DesktopShell(StudioController* studio,QQuickWindow* overlay,QObjec
 DesktopShell::~DesktopShell(){m_tray.hide();delete m_dialog.data();delete m_history.data();delete m_whatsNew.data();}
 void DesktopShell::toggleOverlay() { if(m_overlay->isVisible())m_studio->hideOverlay();else m_studio->showOverlay(); }
 void DesktopShell::requestQuit(){m_installPending=false;emit quitRequested();}
+void DesktopShell::setEditorWindow(QQuickWindow* editor){m_editor=editor;}
 void DesktopShell::finishQuit(){
-    if(m_installPending&&!m_updates.launchInstaller()){m_installPending=false;showUpdates();return;}
+    if(m_installPending){
+        m_installPending=false;
+        if(!m_updates.launchInstaller(m_relaunchMode)){showUpdates();return;}
+    }
     m_tray.hide();emit exitApproved();
 }
 void DesktopShell::showUpdateLog() { showReleaseNotes(false); }
@@ -162,7 +166,7 @@ QDialog* DesktopShell::showReleaseNotes(bool whatsNew) {
 void DesktopShell::showUpdates() {
     if(m_dialog){m_dialog->show();m_dialog->raise();m_dialog->activateWindow();return;}
     auto* dialog=new QDialog;dialog->setAttribute(Qt::WA_DeleteOnClose);m_dialog=dialog;
-    dialog->setWindowTitle("Tablet Pro Radial — Updates");dialog->setWindowIcon(icon());dialog->resize(500,390);
+    dialog->setObjectName("updatesDialog");dialog->setWindowTitle("Tablet Pro Radial — Updates");dialog->setWindowIcon(icon());dialog->resize(500,390);
     auto* layout=new QVBoxLayout(dialog);layout->setContentsMargins(22,20,22,20);layout->setSpacing(12);
     auto* heading=new QLabel("Tablet Pro Radial "+m_updates.currentVersion());auto font=heading->font();font.setPointSize(15);font.setBold(true);heading->setFont(font);layout->addWidget(heading);
     auto* sourceLabel=new QLabel("GitHub release repository");layout->addWidget(sourceLabel);
@@ -176,6 +180,7 @@ void DesktopShell::showUpdates() {
     auto* notes=new QTextEdit;notes->setReadOnly(true);notes->setMinimumHeight(90);layout->addWidget(notes,1);
     auto* progress=new QProgressBar;progress->setRange(0,100);layout->addWidget(progress);
     auto* actions=new QHBoxLayout;auto* page=new QPushButton("Release notes");auto* download=new QPushButton("Download update");auto* cancel=new QPushButton("Cancel download");auto* install=new QPushButton("Install update");
+    download->setObjectName("downloadUpdateButton");install->setObjectName("installUpdateButton");
     actions->addWidget(page);actions->addStretch();actions->addWidget(cancel);actions->addWidget(download);actions->addWidget(install);layout->addLayout(actions);
     const auto refresh=[this,source,check,automatic,status,last,notes,progress,page,download,cancel,install]{
         const bool busy=m_updates.busy();source->setEnabled(!busy&&!m_updates.ready());check->setEnabled(!busy&&!m_updates.ready());
@@ -184,7 +189,7 @@ void DesktopShell::showUpdates() {
         progress->setValue(m_updates.progress());progress->setVisible(busy&&m_updates.available());
         cancel->setVisible(busy);cancel->setText(m_updates.available()?"Cancel download":"Cancel check");
         page->setVisible(!m_updates.release().page.isEmpty());download->setVisible(m_updates.available()&&!m_updates.release().download.isEmpty()&&!m_updates.ready());download->setEnabled(!busy);
-        install->setVisible(m_updates.ready());
+        install->setVisible(m_updates.ready());install->setEnabled(!m_updates.installing());
     };
     connect(&m_updates,&UpdateChecker::changed,dialog,refresh);
     connect(automatic,&QCheckBox::toggled,&m_updates,&UpdateChecker::setAutomatic);
@@ -193,7 +198,12 @@ void DesktopShell::showUpdates() {
     connect(download,&QPushButton::clicked,&m_updates,&UpdateChecker::download);
     connect(cancel,&QPushButton::clicked,&m_updates,&UpdateChecker::cancel);
     connect(page,&QPushButton::clicked,dialog,[this]{QDesktopServices::openUrl(m_updates.release().page);});
-    connect(install,&QPushButton::clicked,dialog,[this]{m_installPending=true;emit quitRequested();});
+    connect(install,&QPushButton::clicked,dialog,[this]{
+        if(m_installPending||m_updates.installing())return;
+        // Remember the layout before a dirty draft might bring the editor forward.
+        m_relaunchMode=m_editor&&m_editor->isVisible()&&!m_overlay->isVisible()?"editor":m_studio->runtime()->docked()?"docked":"radial";
+        m_installPending=true;emit quitRequested();
+    });
     refresh();dialog->show();dialog->raise();dialog->activateWindow();
     if(!m_updates.repository().isEmpty()&&!m_updates.busy()&&!m_updates.ready())m_updates.check();
 }

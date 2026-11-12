@@ -2,6 +2,7 @@
 #include "core/gesture.h"
 #include <QObject>
 #include <QPointF>
+#include <QRectF>
 #include <QVariantList>
 #include <QVariantAnimation>
 #include <QElapsedTimer>
@@ -19,12 +20,15 @@ class MenuSession : public QObject {
     Q_PROPERTY(qreal dockProgress READ dockProgress NOTIFY geometryChanged)
     Q_PROPERTY(bool docked READ docked NOTIFY geometryChanged)
     Q_PROPERTY(QPointF radialCenter READ radialCenter NOTIFY geometryChanged)
+    Q_PROPERTY(QRectF dockBounds READ dockBounds NOTIFY geometryChanged)
+    Q_PROPERTY(bool dragging READ dragging NOTIFY draggingChanged)
     Q_PROPERTY(bool active READ active NOTIFY stateChanged)
     Q_PROPERTY(bool transitioning READ transitioning NOTIFY stateChanged)
     Q_PROPERTY(QString status READ status NOTIFY stateChanged)
     Q_PROPERTY(QStringList heldModifiers READ heldModifiers NOTIFY stateChanged)
     Q_PROPERTY(int durationMs READ durationMs WRITE setDurationMs NOTIFY preferencesChanged)
     Q_PROPERTY(bool parentMenuOpen READ parentMenuOpen NOTIFY stateChanged)
+    Q_PROPERTY(bool parentInPlace READ parentInPlace NOTIFY stateChanged)
     Q_PROPERTY(QVariantList parentButtons READ parentButtons NOTIFY stateChanged)
     Q_PROPERTY(QPointF parentCenter READ parentCenter NOTIFY stateChanged)
     Q_PROPERTY(QString parentLabel READ parentLabel NOTIFY stateChanged)
@@ -40,8 +44,11 @@ public:
     qreal dockProgress() const { return progress_; }
     bool docked() const { return docked_; }
     QPointF radialCenter() const;
+    QRectF dockBounds() const;
     bool active() const { return engine_.active() || parentMenuOpen() || pendingDispatch_ || modifierPointer_.has_value(); }
     bool parentMenuOpen() const {return !parentStack_.isEmpty();}
+    bool parentInPlace() const {return parentMenuOpen()&&parentInPlace_;}
+    bool dragging() const {return dragging_;}
     QVariantList parentButtons() const;
     QPointF parentCenter() const {return parentCenter_;}
     QString parentLabel() const;
@@ -55,6 +62,8 @@ public:
     Q_INVOKABLE void setViewport(qreal width, qreal height);
     Q_INVOKABLE void setRadialCenter(qreal x, qreal y);
     Q_INVOKABLE void moveRadialCenter(qreal x, qreal y);
+    Q_INVOKABLE bool beginRadialDrag();
+    Q_INVOKABLE void endRadialDrag();
     Q_INVOKABLE void toggleDock();
     Q_INVOKABLE void replayDock();
     Q_INVOKABLE void pointerPressed(int pointerId, qreal x, qreal y);
@@ -70,6 +79,7 @@ public:
     void finishPenHover();
 signals:
     void geometryChanged();
+    void draggingChanged();
     void stateChanged();
     void preferencesChanged();
     void cue(const QString& name);
@@ -84,8 +94,8 @@ private:
     QStringList parentStack_;
     QPointF parentCenter_;
     QString parentSelected_;
-    std::optional<int> parentPointer_,ignoredParentPointer_;
-    bool parentCenterPressed_=false;
+    std::optional<int> parentPointer_,ignoredParentPointer_,parentHoldPointer_;
+    bool parentCenterPressed_=false,parentInPlace_=false,dragging_=false;
     radial::GestureEngine engine_;
     WindowPlatform* platform_;
     QVariantAnimation animation_;
@@ -94,7 +104,7 @@ private:
     qreal width_ = 680, height_ = 540, progress_ = 0;
     std::optional<QPointF> radialAnchor_;
     bool draggedAnchor_ = false;
-    QString status_ = "Hold a parent for 300 ms · slide out to open at your finger";
+    QString status_ = "Tap or slide out from a parent to open its children here";
     quintptr invocationTarget_ = 0, gestureTarget_ = 0;
     QString previousSelection_;
     bool pendingDispatch_ = false;
@@ -115,6 +125,7 @@ private:
     void updateView();
     void finish();
     void beginParentPress(const QString& id,int pointer,QPointF point);
+    bool slideParentInPlace(int pointer,QPointF point);
     void openParent(const QString& id,QPointF point,bool hold,int pointer);
     QString parentHit(QPointF point) const;
     void dispatchAction(const std::optional<radial::Action>& action);

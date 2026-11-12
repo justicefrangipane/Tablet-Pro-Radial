@@ -70,7 +70,7 @@ subprocess.run([args.csc, '/nologo', '/target:winexe', '/platform:x64', '/optimi
     '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll',
     '/out:' + str(output), '/resource:' + str(bundle) + ',payload.zip',
     '/resource:' + str(work / 'install.ps1') + ',install.ps1',
-    str(work / 'Setup.cs'), str(hash_source)], check=True)
+    str(work / 'Setup.cs'), str(project / 'installer/SetupWorkflow.cs'), str(hash_source)], check=True)
 result = {'installer': str(output), 'bytes': output.stat().st_size,
           'sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
           'payloadFiles': len(checksums), 'sourceArchive': str(source_zip)}

@@ -35,13 +35,14 @@ public:
     bool busy() const { return !m_reply.isNull(); }
     bool available() const { return newer(m_release.version,m_version); }
     bool ready() const { return !m_readyFile.isEmpty(); }
+    bool installing() const { return m_installStarted; }
     int progress() const { return m_release.size ? int(100*m_received/m_release.size) : 0; }
     bool setRepository(const QString&);
     void setAutomatic(bool);
     void check(bool manual=true);
     void download();
     void cancel();
-    bool launchInstaller();
+    bool launchInstaller(const QString& relaunchMode="radial");
 signals:
     void changed();
     void updateFound();
@@ -51,7 +52,7 @@ private:
     QPointer<QNetworkReply> m_reply;
     QTimer m_deadline;
     QString m_repository,m_version,m_status,m_failure,m_readyFile,m_downloadDirectory;
-    bool m_automatic=true,m_downloading=false;
+    bool m_automatic=true,m_downloading=false,m_installStarted=false;
     UpdateRelease m_release;
     QByteArray m_body;
     std::unique_ptr<QSaveFile> m_file;

@@ -30,9 +30,18 @@ Item {
             }else if(transition===PointerDevice.CancelGrabExclusive){ownsContact=false;if(menu.session.active)menu.session.cancel()}
         }
     }
-    MenuPointer { acceptedDevices: PointerDevice.Stylus | PointerDevice.Airbrush; pointerId: -2 }
-    MenuPointer { acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad; pointerId: -1 }
-    MenuPointer { acceptedDevices: PointerDevice.TouchScreen }
+    Item {
+        anchors.fill: parent
+        containmentMask: QtObject {
+            function contains(point: point): bool {
+                return !menu.session || !menu.session.parentInPlace ||
+                    Math.pow(point.x-menu.session.parentCenter.x,2)+Math.pow(point.y-menu.session.parentCenter.y,2)>40*40
+            }
+        }
+        MenuPointer { acceptedDevices: PointerDevice.Stylus | PointerDevice.Airbrush; pointerId: -2 }
+        MenuPointer { acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad; pointerId: -1 }
+        MenuPointer { acceptedDevices: PointerDevice.TouchScreen }
+    }
     RadialSurface {
         objectName: "parentMenuSurface"
         visible: menu.open
@@ -48,6 +57,8 @@ Item {
         enabled: false
     }
     Rectangle {
+        id: center
+        objectName: "parentMenuCenter"
         visible: menu.open
         x: menu.session ? menu.session.parentCenter.x-38 : 0
         y: menu.session ? menu.session.parentCenter.y-38 : 0
@@ -57,6 +68,19 @@ Item {
             GradientStop { position: 1; color: "#19222e" }
         }
         border.color: "#688297"; border.width: 1
+        containmentMask: QtObject {
+            function contains(point: point): bool { return Math.pow(point.x-38,2)+Math.pow(point.y-38,2)<=38*38; }
+        }
+        TapHandler {
+            enabled: menu.open && menu.session.parentInPlace
+            gesturePolicy: TapHandler.ReleaseWithinBounds
+            onTapped: menu.session.parentBack()
+        }
+        RadialDragHandler {
+            objectName: "parentCenterDrag"
+            enabled: menu.open && menu.session.parentInPlace
+            session: menu.session
+        }
         HubButton {
             objectName: "parentMenuBack"
             anchors.fill: parent
@@ -71,7 +95,7 @@ Item {
         Text {
             x: 7; y: 48; width: 62; height: 15
             text: menu.session ? menu.session.parentLabel : ""
-            color: "#ffe5bd"; font.pixelSize: 9; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
+            color: "#ffe5bd"; font.pixelSize: 10; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
         }
     }
 }

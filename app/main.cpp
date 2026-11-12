@@ -108,6 +108,7 @@ int main(int argc,char**argv) {
     auto* overlay=editor->findChild<QQuickWindow*>("runtimeOverlay");
     if(!overlay){qCritical()<<"Missing runtime overlay";return 3;}
     DesktopShell desktop(&studio,overlay,nullptr,smoke);
+    desktop.setEditorWindow(editor);
     app.setQuitOnLastWindowClosed(!desktop.trayAvailable());
     engine.rootContext()->setContextProperty("desktop",&desktop);
     QObject::connect(&desktop,&DesktopShell::quitRequested,editor,[editor]{QMetaObject::invokeMethod(editor,"requestAppQuit");});
@@ -119,6 +120,7 @@ int main(int argc,char**argv) {
     if(!smoke){studio.platform()->registerToggleHotkey();studio.stylus()->start();}
     auto* surface=overlay->findChild<RadialSurface*>("runtimeSurface");
     auto* settingsSurface=overlay->findChild<RadialSurface*>("settingsSurface");
+    auto* rippleEnvelope=overlay->findChild<QQuickItem*>("settingsRippleEnvelope");
     const auto sector=[](QPointF origin,double axis,double inner,double outer,double halfAngle) {
         QPolygonF points;
         for(int i=0;i<=24;++i){const auto a=axis-halfAngle+2*halfAngle*i/24;points<<origin+QPointF(std::cos(a)*outer,std::sin(a)*outer);}
@@ -126,9 +128,26 @@ int main(int argc,char**argv) {
         return QRegion(points.toPolygon(),Qt::WindingFill);
     };
     auto updateMask=[&] {
+        const auto* session=studio.runtime();
+        if(session->dragging()||session->transitioning()){
+            // One stable motion envelope preserves pointer capture. Moving the
+            // body/glass regions on every pen sample caused stalls and flicker.
+            if(backdrop.enabled())backdrop.setEnabled(false);
+            const QRegion motion(QRect(QPoint(),overlay->size()));
+            if(motion!=overlay->mask())overlay->setMask(motion);
+            return;
+        }
+        if(rippleEnvelope&&rippleEnvelope->isVisible()){
+            // One fixed local envelope accommodates the small outward ripple
+            // without rebuilding native Glass on every animation frame.
+            if(backdrop.enabled())backdrop.setEnabled(false);
+            const QRegion motion(rippleEnvelope->mapRectToScene(rippleEnvelope->boundingRect()).toAlignedRect(),QRegion::Ellipse);
+            if(motion!=overlay->mask())overlay->setMask(motion);
+            return;
+        }
         QRegion region;
         for(const auto* name:{"overlayRail","overlayToolbar","overlayMorePanel","overlayResult"}) {
-            if(studio.runtime()->parentMenuOpen() && name!=QString("overlayResult"))continue;
+            if(studio.runtime()->parentMenuOpen() && !studio.runtime()->docked() && name!=QString("overlayResult"))continue;
             const auto* item=overlay->findChild<QQuickItem*>(name);
             if(!item||!item->isVisible())continue;
             auto rect=item->mapRectToScene(item->boundingRect());
@@ -138,7 +157,7 @@ int main(int argc,char**argv) {
             QPainterPath path;path.addRoundedRect(rect,radius,radius);
             region+=QRegion(path.toFillPolygon().toPolygon());
         }
-        const auto* session=studio.runtime();const qreal p=session->dockProgress();
+        const qreal p=session->dockProgress();
         const bool moving=session->transitioning()||(surface&&surface->childAnimating());
         // Clear the compositor material before a motion envelope broadens the
         // input mask. Otherwise an intermediate frame could frost the monitor.
@@ -148,7 +167,7 @@ int main(int argc,char**argv) {
             const auto center=session->radialCenter();
             for(const auto& value:settingsSurface&&settingsSurface->isVisible()?settingsSurface->buttons():session->buttons())region+=sector(center,value.toMap()["angle"].toDouble(),41,101,3.141592653589793/6-.02);
         }
-        else if(!session->parentMenuOpen() && (!surface||!surface->continuousRail()))for(const auto& value:session->buttons()){
+        else if((!session->parentMenuOpen() || session->docked()) && (!surface||!surface->continuousRail()))for(const auto& value:session->buttons()){
             const auto b=value.toMap();QPainterPath path;
             path.addRoundedRect(QRectF(b["dockX"].toDouble()-25,b["dockY"].toDouble()-25,50,50),12,12);
             region+=QRegion(path.toFillPolygon().toPolygon());
@@ -170,10 +189,11 @@ int main(int argc,char**argv) {
     QObject::connect(&recovery,&DisplayRecovery::refreshMask,&app,updateMask);
     QObject::connect(studio.runtime(),&MenuSession::geometryChanged,&app,updateMask);
     QObject::connect(studio.runtime(),&MenuSession::stateChanged,&app,updateMask);
+    QObject::connect(studio.runtime(),&MenuSession::draggingChanged,&app,updateMask);
     QObject::connect(&studio,&StudioController::changed,&app,updateMask);
     if(surface)QObject::connect(surface,&RadialSurface::visualBoundsChanged,&app,updateMask);
     if(settingsSurface)QObject::connect(settingsSurface,&QQuickItem::visibleChanged,&app,updateMask);
-    for(const auto* name:{"overlayRail","overlayToolbar","overlayMorePanel","overlayResult"})if(auto* item=overlay->findChild<QQuickItem*>(name)){
+    for(const auto* name:{"overlayRail","overlayToolbar","overlayMorePanel","overlayResult","settingsRippleEnvelope"})if(auto* item=overlay->findChild<QQuickItem*>(name)){
         QObject::connect(item,&QQuickItem::visibleChanged,&app,updateMask);
         QObject::connect(item,&QQuickItem::xChanged,&app,updateMask);
         QObject::connect(item,&QQuickItem::yChanged,&app,updateMask);
@@ -248,6 +268,23 @@ int main(int argc,char**argv) {
                     studio.showOverlay();editor->hide();
                     QTimer::singleShot(250,&app,[&,output]{
                         const bool shown=overlay->isVisible()&&overlay->grabWindow().save(output+"/runtime-floating.png");
+                        const auto settleFrame=[](int ms){QEventLoop wait;QTimer::singleShot(ms,&wait,&QEventLoop::quit);wait.exec();};
+                        studio.runtime()->moveRadialCenter(overlay->width()/2,overlay->height()/2);settleFrame(40);overlay->grabWindow();
+                        const auto textureBuilds=surface->textureBuildCount();const auto dragStart=studio.runtime()->radialCenter();
+                        studio.runtime()->beginRadialDrag();
+                        const bool motionMask=overlay->mask()==QRegion(QRect(QPoint(),overlay->size()))&&!backdrop.enabled();
+                        for(int i=1;i<=32;++i){studio.runtime()->moveRadialCenter(dragStart.x()+i*2,dragStart.y()+i);QCoreApplication::processEvents();}
+                        const bool reused=overlay->grabWindow().save(output+"/runtime-dragging.png")&&surface->textureBuildCount()==textureBuilds;
+                        studio.runtime()->endRadialDrag();settleFrame(60);
+                        const bool settled=backdrop.enabled()&&overlay->mask().boundingRect().width()<overlay->width();
+                        QVariantMap parent;for(const auto& value:studio.runtime()->buttons())if(value.toMap()["id"]=="tools")parent=value.toMap();
+                        studio.runtime()->pointerPressed(95,parent["cx"].toDouble(),parent["cy"].toDouble());studio.runtime()->pointerReleased(95,parent["cx"].toDouble(),parent["cy"].toDouble());settleFrame(45);
+                        const auto childArea=QRectF(studio.runtime()->radialCenter()-QPointF(104,104),QSizeF(208,208)).toAlignedRect();
+                        const bool inPlace=studio.runtime()->parentInPlace()&&studio.runtime()->parentCenter()==studio.runtime()->radialCenter()
+                            &&childArea.contains(overlay->mask().boundingRect())&&overlay->grabWindow().save(output+"/runtime-children-in-place.png");
+                        studio.runtime()->parentBack();
+                        qInfo().noquote()<<QJsonDocument(QJsonObject{{"dragMotionMask",motionMask},{"dragReusesTexture",reused},{"dragRestoresGlass",settled},{"childrenReplaceRing",inPlace}}).toJson(QJsonDocument::Compact);
+                        if(!motionMask||!reused||!settled||!inPlace){app.exit(12);return;}
                         const auto* hub=overlay->findChild<QQuickItem*>("overlayToolbar");
                         auto* mode=overlay->findChild<QObject*>("moreMenuButton");
                         auto* more=overlay->findChild<QObject*>("moreMenuButton");
@@ -255,7 +292,21 @@ int main(int argc,char**argv) {
                         const bool centered=hub&&QLineF(hub->position()+QPointF(hub->width()/2,hub->height()/2),center).length()<1&&mode&&mode->property("glyph")=="more";
                         if(more)QMetaObject::invokeMethod(more,"clicked",Qt::DirectConnection);
                         const auto* morePanel=overlay->findChild<QQuickItem*>("settingsSurface");
-                        QEventLoop ringWait;QTimer::singleShot(1000,&ringWait,&QEventLoop::quit);ringWait.exec();
+                        settleFrame(100);
+                        auto* bloomAnimation=overlay->findChild<QObject*>("settingsBloomAnimation");
+                        QMetaObject::invokeMethod(bloomAnimation,"pause",Qt::DirectConnection);
+                        overlay->setProperty("bloomProgress",.25);settleFrame(50);
+                        const bool pressHeld=overlay->property("centerRippleScale").toDouble()>1.06&&overlay->property("ringRippleDistance").toDouble()<.2
+                            &&overlay->grabWindow().save(output+"/runtime-ripple-press.png");
+                        const auto rippleMask=overlay->mask();
+                        overlay->setProperty("bloomProgress",.57);settleFrame(50);
+                        const bool rippleSafe=rippleEnvelope&&rippleEnvelope->isVisible()&&rippleMask==overlay->mask()&&rippleMask.boundingRect().width()==216
+                            &&!backdrop.enabled()&&overlay->property("ringRippleDistance").toDouble()>5&&overlay->grabWindow().save(output+"/runtime-ripple-outward.png");
+                        QMetaObject::invokeMethod(bloomAnimation,"resume",Qt::DirectConnection);
+                        QEventLoop ringWait;QTimer::singleShot(1200,&ringWait,&QEventLoop::quit);ringWait.exec();
+                        const bool rippleSettled=rippleEnvelope&&!rippleEnvelope->isVisible()&&backdrop.enabled()==studio.backdropEnabled();
+                        qInfo().noquote()<<QJsonDocument(QJsonObject{{"pressHeld",pressHeld},{"rippleMaskStable",rippleSafe},{"rippleSettled",rippleSettled}}).toJson(QJsonDocument::Compact);
+                        if(!pressHeld||!rippleSafe||!rippleSettled){app.exit(13);return;}
                         const bool overflow=morePanel&&morePanel->isVisible()&&!surface->isVisible()&&settingsSurface->buttons().size()==6&&overlay->property("settingsReady").toBool();
                         overlay->grabWindow().save(output+"/runtime-more.png");
                         overlay->setProperty("menuOpen",false);
@@ -286,10 +337,39 @@ int main(int argc,char**argv) {
                             QEventLoop closeWait;QTimer::singleShot(1000,&closeWait,&QEventLoop::quit);closeWait.exec();
                             const bool flips=narrowClosed&&narrowOpen&&surface->isVisible();
                             studio.runtime()->setReducedMotion(false);
+                            const auto captureTransition=[&](const QString& name){
+                                QEventLoop frameWait;QTimer::singleShot(600,&frameWait,&QEventLoop::quit);frameWait.exec();
+                                const auto progress=studio.runtime()->dockProgress();
+                                const bool moving=studio.runtime()->transitioning()&&progress>0&&progress<1
+                                    &&surface->isVisible()&&overlay->mask().contains(QPoint(overlay->width()/2,overlay->height()/2));
+                                const bool saved=overlay->grabWindow().save(output+"/"+name+".png");
+                                qInfo()<<name<<"progress"<<progress<<"visible"<<surface->isVisible()<<"moving"<<moving;
+                                QEventLoop finishWait;
+                                QObject::connect(studio.runtime(),&MenuSession::stateChanged,&finishWait,[&]{if(!studio.runtime()->transitioning())finishWait.quit();});
+                                QTimer::singleShot(3000,&finishWait,&QEventLoop::quit);
+                                if(studio.runtime()->transitioning())finishWait.exec();
+                                return moving&&saved&&!studio.runtime()->transitioning();
+                            };
+                            studio.stylus()->sideButtonHeld();
+                            const bool heldToRadial=captureTransition("runtime-undocking")&&!studio.runtime()->docked()&&overlay->isVisible();
+                            studio.stylus()->sideButtonHeld();
+                            const bool heldToDock=captureTransition("runtime-docking")&&studio.runtime()->docked()&&overlay->isVisible();
+                            if(!heldToRadial || !heldToDock){app.exit(10);return;}
                             studio.runtime()->setProfile(radial::legacyDefaultProfile());
                             QVariantMap text;
                             for(const auto& value:studio.runtime()->buttons())if(value.toMap()["id"]=="text")text=value.toMap();
                             const double x=text["dockX"].toDouble(),y=text["dockY"].toDouble();
+                            studio.runtime()->pointerPressed(93,x,y);
+                            QEventLoop parentWait;QTimer::singleShot(360,&parentWait,&QEventLoop::quit);parentWait.exec();
+                            const auto childCenter=studio.runtime()->parentCenter().toPoint();
+                            const bool heldDock=studio.runtime()->parentMenuOpen()&&housing&&housing->opacity()==1&&surface->opacity()==1
+                                &&overlay->mask().contains(QPoint(qRound(x),qRound(y)))&&overlay->mask().contains(childCenter)
+                                &&overlay->grabWindow().save(output+"/runtime-held-parent.png");
+                            studio.runtime()->pointerReleased(93,x,y);
+                            const bool parentCloses=!studio.runtime()->parentMenuOpen()&&overlay->isVisible()&&overlay->mask().contains(QPoint(qRound(x),qRound(y)));
+                            qInfo().noquote()<<QJsonDocument(QJsonObject{{"holdSwitchesToRadial",heldToRadial},{"holdSwitchesToDock",heldToDock},{"dockVisibleWithHeldChildren",heldDock},{"parentReleaseClosesChildren",parentCloses}}).toJson(QJsonDocument::Compact);
+                            if(!heldDock || !parentCloses){app.exit(11);return;}
+                            studio.runtime()->setReducedMotion(false);
                             studio.runtime()->pointerPressed(94,x,y);studio.runtime()->pointerMoved(94,x+42,y);
                             const auto children=studio.runtime()->childButtons();
                             if(children.size()!=6){app.exit(9);return;}

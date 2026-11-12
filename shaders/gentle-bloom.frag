@@ -22,7 +22,10 @@ void main()
     float distance = length(point - vec2(9.0 * q, -5.0 * q));
     float ripple = (1.0 - q) * (sin(a * 3.0 + p * 4.0) * 7.0
                                             + sin(a * 5.0 - p * 5.0) * 3.0);
-    float edge = 132.0 * q - distance + ripple;
+    // The selected floating Press and release motion sends a circular color
+    // wave from the center. The contained rail retains its gentle liquid fill.
+    float edge = rail > 0.5 ? 132.0 * q - distance + ripple
+                           : 3.0 + 134.0 * q - length(point);
     float cover = smoothstep(-0.65, 0.65, edge);
     float glint = max(0.0, 1.0 - abs(edge - 1.3) / 2.3) * sin(3.14159265 * p);
     vec4 color = texture(source, qt_TexCoord0);

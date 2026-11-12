@@ -62,6 +62,11 @@ struct StylusInput::Channel {
 };
 
 StylusInput::StylusInput(QObject* parent) : QObject(parent) {
+    buttonHoldTimer_.setSingleShot(true);buttonHoldTimer_.setInterval(SideButtonHoldMs);buttonHoldTimer_.setTimerType(Qt::PreciseTimer);
+    connect(&buttonHoldTimer_,&QTimer::timeout,this,[this]{
+        if(!enabled_ || buttonOwner_<0)return;
+        buttonHeld_=true;emit sideButtonHeld();
+    });
     // Only the diagnostic display is throttled. Every contact/button transition
     // reaches consumers immediately, including down and up in the same frame.
     readingsTimer_.setInterval(100);readingsTimer_.setSingleShot(true);
@@ -106,6 +111,7 @@ void StylusInput::setEnabled(bool value){
 }
 void StylusInput::setSelectedSideButton(int button){
     if((button!=1&&button!=2)||selectedSideButton_==button)return;
+    cancelButtonGesture();
     selectedSideButton_=button;
     for(auto& c:channels_){c->edges.reset();if(c->sample)c->edges.update(c->sample->buttons(),button);}
     emit selectedSideButtonChanged();emit settingsChanged();
@@ -131,6 +137,7 @@ void StylusInput::start(){
 #endif
 }
 void StylusInput::stopChannel(Channel& c){
+    if(buttonOwner_==c.index)cancelButtonGesture();
     c.stopping=true;c.startup.stop();c.ready=false;c.edges.reset();c.sample.reset();c.pending.clear();
     if(c.process.state()!=QProcess::NotRunning){c.process.kill();c.process.waitForFinished(1500);}
 }
@@ -141,6 +148,25 @@ void StylusInput::stopHelper(){
 void StylusInput::stop(){started_=false;stopHelper();}
 void StylusInput::failProtocol(Channel& c,const QString& reason){
     stopChannel(c);c.status=reason;emit inputLost();refreshStatus();
+}
+void StylusInput::cancelButtonGesture(){
+    buttonHoldTimer_.stop();buttonOwner_=-1;buttonHeld_=false;
+}
+void StylusInput::updateButtonGesture(Channel& c,const StylusButtons& buttons){
+    const bool rising=c.edges.update(buttons,selectedSideButton_)!=0;
+    const bool down=selectedSideButton_==1?buttons.barrel:buttons.invert;
+    if(buttonOwner_==c.index){
+        if(!buttons.inRange){cancelButtonGesture();return;}
+        if(!down){
+            const bool tap=!buttonHeld_;
+            cancelButtonGesture();
+            if(tap)emit sideButtonPressed();
+            return;
+        }
+    }
+    if(rising && buttonOwner_<0){
+        buttonOwner_=c.index;buttonHeld_=false;buttonHoldTimer_.start();emit sideButtonDown();
+    }
 }
 void StylusInput::readOutput(Channel& c){
     const auto output=c.process.readAllStandardOutput();if(c.stopping)return;
@@ -168,7 +194,7 @@ void StylusInput::readOutput(Channel& c){
             emit sampleReceived(c.index,*sample);
             c.status=sample->inRange()?(down?"Pen touching":"Pen hovering"):"Pen out of range";
             if(!readingsTimer_.isActive())readingsTimer_.start();
-            if(enabled_&&c.edges.update(sample->buttons(),selectedSideButton_))emit sideButtonPressed();
+            if(enabled_)updateButtonGesture(c,sample->buttons());
         }else if(fields.size()>=3&&fields[0]=="TPP2"&&fields[1]=="ERROR"){
             failProtocol(c,fields[2]=="registration"?"No compatible pen listener; reconnect after connecting the device.":"Pen DLL error: "+QString::fromLatin1(fields[2]));return;
         }else{failProtocol(c,"Invalid listener protocol.");return;}

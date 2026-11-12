@@ -1,7 +1,9 @@
 #include "MenuSession.h"
 #include "platform/WindowPlatform.h"
+#include "ui/DockLayout.h"
 #include <QtMath>
 #include <QLineF>
+#include <QSignalBlocker>
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -28,6 +30,9 @@ MenuSession::MenuSession(bool simulation, WindowPlatform* platform, QObject* par
         if(!parentPress_)return;
         if(!simulation_ && platform_ && !platform_->targetUnchanged(gestureTarget_)){cancel();return;}
         const auto press=*parentPress_;
+        if(!docked_ || parentInPlace()){
+            openParent(press.id,parentMenuOpen()?parentCenter_:radialCenter(),false,press.pointer);return;
+        }
         const auto pen=(!simulation_&&platform_)?platform_->penPositionInOverlay():std::optional<QPointF>{QPointF(width_/2,height_/2)};
         openParent(press.id,pen.value_or(press.point),true,press.pointer);
         if(!pen){status_="Menu opened here · move your pen near the screen before holding to open at its tip";emit stateChanged();}
@@ -39,7 +44,7 @@ MenuSession::MenuSession(bool simulation, WindowPlatform* platform, QObject* par
     if(!simulation_ && platform_)connect(platform_,&WindowPlatform::strokeModifiersReleased,this,&MenuSession::finishNextStroke);
     if(!simulation_ && platform_)connect(platform_,&WindowPlatform::hoverModifiersReleased,this,&MenuSession::finishPenHover);
     connect(&animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) { progress_ = value.toReal(); emit geometryChanged(); });
-    connect(&animation_, &QVariantAnimation::finished, this, [this] { status_ = "Hold a parent for 300 ms · slide out to open at your finger"; emit stateChanged(); emit cue("snap"); });
+    connect(&animation_, &QVariantAnimation::finished, this, [this] { status_ = docked_?"Hold a parent for 300 ms · slide out for a fan":"Tap or slide out from a parent to open its children here"; emit stateChanged(); emit cue("snap"); });
     if (!simulation_ && platform_) connect(platform_, &WindowPlatform::targetLost, this, [this] { if (active() || !heldModifiers_.isEmpty()) { cancel(); status_ = "Canceled: the target application changed."; emit stateChanged(); } });
     if (!simulation_ && platform_) connect(platform_, &WindowPlatform::actionDispatchFinished, this, [this](bool success, const QString& error) {
         if (!pendingDispatch_) return;
@@ -84,16 +89,24 @@ void MenuSession::setRadialCenter(qreal x, qreal y) {
     if (changed) emit geometryChanged();
 }
 void MenuSession::moveRadialCenter(qreal x, qreal y) {
-    if(active() || docked_ || transitioning() || !std::isfinite(x) || !std::isfinite(y))return;
-    const auto center=boundedRadialCenter({x,y},false);
+    if((active()&&!parentInPlace()) || pendingDispatch_ || docked_ || transitioning() || !std::isfinite(x) || !std::isfinite(y))return;
+    const auto center=boundedRadialCenter({qreal(qRound(x)),qreal(qRound(y))},false);
     const bool changed=center!=radialCenter();radialAnchor_=center;draggedAnchor_=true;
-    if(changed)emit geometryChanged();
+    if(changed){if(parentInPlace()){parentCenter_=center;emit stateChanged();}emit geometryChanged();}
 }
+bool MenuSession::beginRadialDrag(){
+    if(docked_ || transitioning() || pendingDispatch_ || (active()&&!parentInPlace()))return false;
+    dragging_=true;emit draggingChanged();releaseModifiers();
+    parentHoldTimer_.stop();parentPress_.reset();parentPointer_.reset();parentSelected_.clear();
+    return true;
+}
+void MenuSession::endRadialDrag(){if(dragging_){dragging_=false;emit draggingChanged();}}
 void MenuSession::setDurationMs(int value) { durationMs_ = std::clamp(value, 250, 2400); emit preferencesChanged(); }
 void MenuSession::setReducedMotion(bool reduced) {
     reduced_ = reduced;
     if (reduced_ && animation_.state() == QAbstractAnimation::Running) { animation_.stop(); progress_ = docked_ ? 1 : 0; emit geometryChanged(); emit stateChanged(); }
 }
+QRectF MenuSession::dockBounds() const { return DockLayout::bounds(height_); }
 QVariantList MenuSession::buttons() const {
     QVariantList result;
     const auto center = radialCenter();
@@ -103,8 +116,9 @@ QVariantList MenuSession::buttons() const {
         if (found == profile_.nodes.end()) continue;
         const auto& node = found->second;
         double angle = -Pi/2 + i * Pi / 3;
+        const auto dock = DockLayout::buttonCenter(i, height_);
         result.append(QVariantMap{{"id", QString::fromStdString(node.id)}, {"icon", QString::fromStdString(node.action.kind==radial::ActionKind::Modifier?node.action.key:node.icon)}, {"modifierState",modifierState(node)}, {"label", QString::fromStdString(node.label)}, {"color", colors[i]}, {"slot", i},
-            {"cx", center.x() + std::cos(angle)*70}, {"cy", center.y() + std::sin(angle)*70}, {"angle", angle}, {"dockX", 35.0}, {"dockY", height_/2 + (i-2.5)*51}});
+            {"cx", center.x() + std::cos(angle)*70}, {"cy", center.y() + std::sin(angle)*70}, {"angle", angle}, {"dockX", dock.x()}, {"dockY", dock.y()}});
     }
     return result;
 }
@@ -127,12 +141,23 @@ QString MenuSession::selectedId() const {
     return active() && engine_.view().children.empty() && !engine_.view().neutral ? QString::fromStdString(engine_.view().rootNodeId) : QString{};
 }
 void MenuSession::toggleDock() {
-    if (active() || animation_.state() == QAbstractAnimation::Running) return;
+    if (active()) return;
+    animation_.stop();
     releaseModifiers();
     docked_ = !docked_;
     if (reduced_) { progress_ = docked_ ? 1 : 0; status_ = docked_ ? "Docked" : "Floating"; emit geometryChanged(); emit stateChanged(); return; }
-    animation_.setStartValue(progress_); animation_.setEndValue(docked_ ? 1.0 : 0.0); animation_.setDuration(durationMs_);
-    animation_.setEasingCurve(QEasingCurve::Linear); animation_.start();
+    const qreal start=progress_,end=docked_?1.0:0.0;
+    {
+        // Reconfiguring a finished/reversing QVariantAnimation recalculates its
+        // value at the OLD time. Do not let that overwrite the visible progress
+        // or turn the remaining duration into a one-millisecond jump.
+        const QSignalBlocker configuring(&animation_);
+        animation_.setDuration(std::max(1,qRound(durationMs_*std::abs(end-start))));
+        animation_.setStartValue(start);animation_.setEndValue(end);
+        animation_.setCurrentTime(0);
+        animation_.setEasingCurve(QEasingCurve::Linear);
+    }
+    animation_.start();
     status_ = docked_ ? "Quiet Gravity · attracting" : "Quiet Gravity · releasing";
     emit stateChanged(); emit cue("crackle");
 }
@@ -162,7 +187,7 @@ void MenuSession::pointerPressed(int pointerId, qreal x, qreal y) {
         if (engine_.begin(profile_, b["id"].toString().toStdString(), {cx,cy}, docked_ ? 0 : angle, pointerId, radial::Point{x,y},
                           radial::Bounds{FanViewportMargin,FanViewportMargin,width_-FanViewportMargin,height_-FanViewportMargin})) {
             previousSelection_.clear(); previousDepth_ = 0; status_ = "Pull outward to open · release a highlighted action"; updateView();
-            if(node.kind==radial::NodeKind::Group){beginParentPress(b["id"].toString(),pointerId,{x,y});status_="Hold 300 ms for the pen tip · slide out to open here";emit stateChanged();}
+            if(node.kind==radial::NodeKind::Group){beginParentPress(b["id"].toString(),pointerId,{x,y});status_=docked_?"Hold 300 ms for the pen tip · slide out for a fan":"Tap or slide out to replace this ring with its children";emit stateChanged();}
         }
         return;
     }
@@ -192,7 +217,10 @@ void MenuSession::pointerMoved(int pointerId, qreal x, qreal y) {
     if(parentMenuOpen()){parentPointerMoved(pointerId,x,y);return;}
     if (!engine_.ownsPointer(pointerId)) return;
     if (!simulation_ && platform_ && !platform_->targetUnchanged(gestureTarget_)) { cancel(); status_ = "Canceled: target changed."; emit stateChanged(); return; }
+    if(!docked_ && slideParentInPlace(pointerId,{x,y}))return;
     if(parentPress_ && QLineF(parentPress_->point,{x,y}).length()>12)parentHoldTimer_.stop();
+    // Floating parents use the existing wheel; only the dock still opens fans.
+    if(parentPress_&&!docked_)return;
     engine_.move(pointerId,{x,y}); updateView();
     if(!engine_.active())return;
     const auto selected=selectedId();
@@ -204,13 +232,18 @@ void MenuSession::pointerMoved(int pointerId, qreal x, qreal y) {
         beginModifier(node->second,pointerId,{x,y},true);
 }
 void MenuSession::pointerReleased(int pointerId, qreal x, qreal y) {
+    if(parentHoldPointer_ && *parentHoldPointer_==pointerId){cancel();return;}
     if(ignoredParentPointer_ && *ignoredParentPointer_==pointerId){ignoredParentPointer_.reset();return;}
     if(parentMenuOpen()){parentPointerReleased(pointerId,x,y);return;}
     if(parentPress_){
         if(parentPress_->pointer!=pointerId)return;
         pointerMoved(pointerId,x,y);
         if(parentMenuOpen()){parentPointerReleased(pointerId,x,y);return;}
-        if(parentPress_){parentHoldTimer_.stop();parentPress_.reset();engine_.cancel();status_="Hold a parent for 300 ms, or slide out to open its fan";finish();return;}
+        if(parentPress_){
+            const auto press=*parentPress_;
+            if(!docked_&&QLineF(press.point,{x,y}).length()<=12){openParent(press.id,radialCenter(),false,pointerId);ignoredParentPointer_.reset();return;}
+            parentHoldTimer_.stop();parentPress_.reset();engine_.cancel();status_="Hold a parent for 300 ms, or slide out to open its fan";finish();return;
+        }
     }
     if(modifierPointer_){
         if(*modifierPointer_!=pointerId)return;
@@ -250,6 +283,9 @@ void MenuSession::pointerReleased(int pointerId, qreal x, qreal y) {
     dispatchAction(action);
 }
 void MenuSession::dispatchAction(const std::optional<radial::Action>& action) {
+    // A chosen child may wait for physical input to lift before native dispatch.
+    // Releasing its launching finger must not cancel that committed command.
+    parentHoldPointer_.reset();
     if (action && action->kind != radial::ActionKind::None) {
         const auto mods = modifiers(*action);
         QString description = action->kind == radial::ActionKind::Text ? "Insert text: " + QString::fromStdString(action->text).left(60) : (mods.isEmpty()?QString{}:mods.join('+')+'+') + QString::fromStdString(action->key);
@@ -277,6 +313,8 @@ void MenuSession::dispatchAction(const std::optional<radial::Action>& action) {
     if(action && action->kind!=radial::ActionKind::None)emit selectionCommitted();
 }
 void MenuSession::finish() {
+    endRadialDrag();parentInPlace_=false;
+    parentHoldPointer_.reset();
     parentHoldTimer_.stop();parentPress_.reset();parentStack_.clear();parentPointer_.reset();ignoredParentPointer_.reset();parentSelected_.clear();
     if (!simulation_ && platform_) platform_->releaseTarget();
     gestureTarget_ = 0; previousSelection_.clear(); previousDepth_ = 0;
@@ -380,7 +418,7 @@ QString MenuSession::parentHit(QPointF point) const {
 void MenuSession::beginParentPress(const QString& id,int pointer,QPointF point){
     parentPress_=ParentPress{id,pointer,point};parentHoldTimer_.start();
     // A parent inside a held radial can also slide out into the original fan.
-    if(parentMenuOpen()){
+    if(parentMenuOpen()&&!parentInPlace()){
         engine_.cancel();
         for(const auto& value:parentButtons()){
             const auto button=value.toMap();if(button["id"].toString()!=id)continue;
@@ -389,6 +427,14 @@ void MenuSession::beginParentPress(const QString& id,int pointer,QPointF point){
             break;
         }
     }
+}
+bool MenuSession::slideParentInPlace(int pointer,QPointF point){
+    if(!parentPress_||parentPress_->pointer!=pointer)return false;
+    const auto center=parentMenuOpen()?parentCenter_:radialCenter();
+    const auto axis=parentPress_->point-center;const auto length=std::hypot(axis.x(),axis.y());
+    const auto delta=point-parentPress_->point;
+    if(length<1 || QPointF::dotProduct(delta,axis)/length<radial::GestureEngine::OpenThreshold)return false;
+    const auto id=parentPress_->id;openParent(id,center,false,pointer);return true;
 }
 void MenuSession::openParent(const QString& id,QPointF point,bool hold,int pointer){
     if(!std::isfinite(point.x())||!std::isfinite(point.y())||width_<208||height_<208){cancel();status_="Not enough room for this radial. Enlarge the preview.";emit stateChanged();return;}
@@ -401,9 +447,12 @@ void MenuSession::openParent(const QString& id,QPointF point,bool hold,int point
     if(!nested || parentStack_.last()!=id)parentStack_.append(id);
     const qreal marginX=std::min(qreal(104),width_/2),marginY=std::min(qreal(104),height_/2);
     parentCenter_={std::clamp(point.x(),marginX,width_-marginX),std::clamp(point.y(),marginY,height_-marginY)};
-    if(hold){ignoredParentPointer_=pointer;parentPointer_.reset();}
-    else {ignoredParentPointer_.reset();parentPointer_=pointer;}
-    status_="Choose a child · center goes back · Esc closes";emit cue("open");emit stateChanged();
+    parentInPlace_=!hold;
+    if(hold && !parentHoldPointer_)parentHoldPointer_=pointer;
+    // The contact that opens/replaces the ring must not choose a new button
+    // beneath itself on release. The next tap selects from the visible ring.
+    ignoredParentPointer_=pointer;parentPointer_.reset();
+    status_=hold?"Keep holding the parent · choose a child with your pen · release parent to close":"Choose a child · tap the center for Back · drag the center to move";emit cue("open");emit stateChanged();
 }
 void MenuSession::parentPointerPressed(int pointer,qreal x,qreal y){
     if(!std::isfinite(x)||!std::isfinite(y)){cancel();return;}
@@ -422,6 +471,7 @@ void MenuSession::parentPointerMoved(int pointer,qreal x,qreal y){
     if(modifierPointer_){moveModifierPointer(pointer,x,y);return;}
     if(!simulation_&&platform_&&!platform_->targetUnchanged(gestureTarget_)){cancel();return;}
     if(parentPress_){
+        if(parentInPlace()&&slideParentInPlace(pointer,{x,y}))return;
         const auto distance=QLineF(parentPress_->point,{x,y}).length();if(distance>12)parentHoldTimer_.stop();
         engine_.move(pointer,{x,y});
         if(!engine_.view().children.empty()){
@@ -436,12 +486,14 @@ void MenuSession::parentPointerMoved(int pointer,qreal x,qreal y){
     if(node!=profile_.nodes.end()&&node->second.action.kind==radial::ActionKind::Modifier)beginModifier(node->second,pointer,{x,y},true);
 }
 void MenuSession::parentPointerReleased(int pointer,qreal x,qreal y){
+    if(parentHoldPointer_ && *parentHoldPointer_==pointer){cancel();return;}
     if(ignoredParentPointer_ && *ignoredParentPointer_==pointer){ignoredParentPointer_.reset();return;}
     if(!parentPointer_ || *parentPointer_!=pointer)return;
     if(!simulation_&&platform_&&!platform_->targetUnchanged(gestureTarget_)){cancel();return;}
     if(modifierPointer_){parentStack_.clear();pointerReleased(pointer,x,y);return;}
     if(parentPress_){
         parentPointerMoved(pointer,x,y);
+        if(ignoredParentPointer_&&*ignoredParentPointer_==pointer){ignoredParentPointer_.reset();return;}
         if(!parentMenuOpen()){pointerReleased(pointer,x,y);return;}
         if(modifierPointer_){parentStack_.clear();pointerReleased(pointer,x,y);return;}
     }
@@ -449,7 +501,7 @@ void MenuSession::parentPointerReleased(int pointer,qreal x,qreal y){
     const auto id=parentHit({x,y});parentHoldTimer_.stop();parentPress_.reset();parentPointer_.reset();parentSelected_.clear();
     const auto node=profile_.nodes.find(id.toStdString());
     if(node!=profile_.nodes.end()){
-        if(node->second.kind==radial::NodeKind::Group){openParent(id,parentCenter_,true,pointer);ignoredParentPointer_.reset();return;}
+        if(node->second.kind==radial::NodeKind::Group){openParent(id,parentCenter_,!parentInPlace(),pointer);ignoredParentPointer_.reset();return;}
         if(node->second.action.kind==radial::ActionKind::Modifier){
             // A release can carry the first position inside this child when moves are coalesced.
             if(!beginModifier(node->second,pointer,{x,y},false))return;
@@ -458,6 +510,7 @@ void MenuSession::parentPointerReleased(int pointer,qreal x,qreal y){
         const auto action=node->second.action;parentStack_.clear();dispatchAction(action);return;
     }
     if(QLineF(parentCenter_,{x,y}).length()<=40){if(parentCenterPressed_)parentBack();else emit stateChanged();return;}
+    if(parentInPlace()){emit stateChanged();return;}
     cancel();
 }
 void MenuSession::parentBack(){

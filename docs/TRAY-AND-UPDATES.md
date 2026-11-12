@@ -1,4 +1,4 @@
-# Tablet Pro Radial 0.3.13
+# Tablet Pro Radial 0.3.21
 
 The bronze-and-ivory fan icon beside the Windows clock stays available while the editor
 and overlay are hidden. Windows may initially place it under the hidden-icons
@@ -9,6 +9,15 @@ Apply, Discard, or Keep editing before quitting. Updates and Quit are also in th
 editor's bottom bar. The Glass rendering fix from 0.3.2 is included.
 
 ## Update log
+
+After downloading a verified update, click **Install update** once. Radial closes
+safely, releases held modifiers and stops its pen listeners. Setup waits for that
+shutdown, installs the update, and reopens Radial automatically. Updates started
+from 0.3.21 onward restore the same docked, radial, or editor mode. The first update
+from older versions reopens the floating radial. A progress window shows the
+handoff; no extra install or Open now confirmation is needed. Unapplied editor
+changes still offer Apply, Discard, or Keep editing before setup starts. If setup
+cannot be launched, Radial stays open for retry. Saved menus and settings are kept.
 
 After a new version is installed, **What's new** opens automatically the first
 time that version runs, including radial, docked, and editor launches. It shows
