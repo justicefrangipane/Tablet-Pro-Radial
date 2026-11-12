@@ -150,6 +150,21 @@ void BackdropEffect::setDiffusion(qreal distance)
     m_diffusion = next;
     refresh();
 }
+void BackdropEffect::setVisualRegion(const QRegion& region)
+{
+    setVisualRegion(region,m_diffusion);
+}
+void BackdropEffect::setVisualRegion(const QRegion& region,qreal diffusion)
+{
+    const qreal next=qBound(qreal(0),diffusion,qreal(100));
+    if(m_visualRegion && *m_visualRegion==region && qFuzzyCompare(next+1,m_diffusion+1))return;
+    m_visualRegion=region;m_diffusion=next;refresh();
+}
+void BackdropEffect::clearVisualRegion()
+{
+    if(!m_visualRegion)return;
+    m_visualRegion.reset();refresh();
+}
 
 bool BackdropEffect::eventFilter(QObject* watched, QEvent* event)
 {
@@ -178,7 +193,7 @@ void BackdropEffect::refresh()
         return;
     }
     const QRegion viewport(QRect(QPoint(), m_window->size()));
-    const QRegion shape = m_window->mask().intersected(viewport);
+    const QRegion shape = visualRegion().intersected(viewport);
     // An empty Qt mask means the entire window. Never make that a glass sheet,
     // including on first show or during a full-screen animation/input envelope.
     if (shape.isEmpty() || shape == viewport) {
@@ -204,7 +219,10 @@ void BackdropEffect::refresh()
         return;
     }
     const qreal scale = m_window->devicePixelRatio();
-    const QRegion pixels = QTransform::fromScale(scale, scale).map(shape);
+    // A translated shape keeps its cached contour, also at fractional DPI.
+    const auto logicalOrigin=shape.boundingRect().topLeft();
+    const QRegion pixels = QTransform::fromScale(scale, scale).map(shape.translated(-logicalOrigin))
+        .translated(qRound(logicalOrigin.x()*scale),qRound(logicalOrigin.y()*scale));
     const qreal diffusion = m_diffusion * scale;
     const int padding = qCeil(diffusion);
     const QRect bounds = pixels.boundingRect().adjusted(-padding,-padding,padding,padding);
@@ -243,6 +261,7 @@ void BackdropEffect::refresh()
     auto& api=compositionApi();
     if(!api.ready()){clear();return;}
     if(shapeChanged){
+        ++m_shapeBuildCount;
         std::vector<RECT> rectangles;
         for(const QRect& r:clip)rectangles.push_back({r.x(),r.y(),r.x()+r.width(),r.y()+r.height()});
         HRESULT result=S_OK;

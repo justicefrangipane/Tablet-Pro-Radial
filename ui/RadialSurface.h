@@ -4,6 +4,7 @@
 #include <QVariantList>
 #include <QVariantAnimation>
 #include <QRectF>
+#include <QRegion>
 #include <memory>
 #include <atomic>
 
@@ -37,6 +38,7 @@ public:
     QRectF visualBounds() const;
     bool childAnimating() const { return m_childAnimation.state()==QAbstractAnimation::Running || m_retireAnimation.state()==QAbstractAnimation::Running; }
     quint64 textureBuildCount() const { return m_textureBuildCount.load(); }
+    QRegion motionGlassRegion(qreal progress);
     void setButtons(const QVariantList &value);
     void setChildButtons(const QVariantList &value);
     void setSelectedId(const QString &value);
@@ -77,6 +79,9 @@ private:
     bool prepareGeometry(qreal rasterScale);
     struct State;
     std::unique_ptr<State> m_state;
+    // GUI-thread geometry cache, separate from the scene graph's state.
+    std::unique_ptr<State> m_glassState;
+    bool m_glassDirty = true;
     QVariantList m_buttons, m_children, m_retiringChildren;
     QString m_selectedId;
     qreal m_dockProgress = 0;

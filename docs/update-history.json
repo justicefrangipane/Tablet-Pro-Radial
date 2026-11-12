@@ -2,6 +2,19 @@
   "app": "Tablet Pro Radial",
   "releases": [
     {
+      "version": "0.3.25",
+      "date": "2026-11-12",
+      "title": "Live Glass and a faster press-to-release menu",
+      "improved": [
+        "Press and hold the floating center with your pen, finger, or mouse to gently expand it. The settings ripple and bronze fill begin when you release. Dragging still moves the menu without opening settings.",
+        "The released radial animation now takes 420 ms instead of 960 ms. Docked settings fill in 360 ms instead of 760 ms. Closing still reverses the animation."
+      ],
+      "fixed": [
+        "Glass stays visible through the center press, settings animation, docking and undocking, and center dragging. The blur follows the visible menu rather than the temporary input area.",
+        "Moving Glass reuses its shape when possible, while animated fragment coverage keeps blur processing bounded. Glass off and Reduced motion are still respected."
+      ]
+    },
+    {
       "version": "0.3.24",
       "date": "2026-11-11",
       "title": "Press and release ripple and aligned docking",

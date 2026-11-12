@@ -1,4 +1,14 @@
-# Local candidate: 0.3.24
+# Local candidate: 0.3.25
+
+The floating center expands by 8% over 90 ms while a pen, finger or mouse is held down. Release starts the 420 ms settings ripple and bronze fill while the center relaxes over 180 ms. A long hold does not open settings early; dragging cancels the press feedback and retains movement-only behavior. Docked settings now fill in 360 ms. Closing still reverses the current animation, and Reduced motion skips movement.
+
+Native Glass now has its own visible region, independent of the larger input region used for pointer capture. It stays enabled through settings, docking/undocking, child transitions and center drags. Docking coverage follows the rendered fragments; the soft blur contour uses a bounded sampling surface while live blur and menu artwork stay at native density. Translated contours are cached, including at fractional display scales. The hub and wedge regions read the same center to avoid intermediate rebuilds while QML updates its axes separately. Display recovery and the user's Glass preference remain authoritative.
+
+All ten Windows suites pass (55.65 seconds), including 114 native settings/display checks and 91 rendered Glass checks. Synthetic pen events verify expansion over a long hold, release-triggered opening and drag cancellation. Pixel tests verify actual background blur during motion and unchanged pixels outside the menu. Motion Glass updates measured 11 ms at the 95th percentile and 43 ms maximum on this machine. The complete-app check passes with live Glass, unchanged shape/texture build counts during dragging, stable ripple coverage, and both dock transition directions. Packaged startup and installation receipts remain outside the source archive; physical pen feel remains a hands-on acceptance check.
+
+Not published. Exact 0.3.25 notes require Justice or Bassem approval.
+
+# Previous local candidate: 0.3.24
 
 The floating center menu uses the selected Press and release ripple: a 960 ms reversible timeline expands the center, holds briefly, then moves the outer wedges by up to 6 logical pixels as bronze fills outward. Center input stays fixed, icon textures remain cached, and one temporary native mask contains the movement. Docked settings retain their contained 760 ms liquid fill; Reduced motion skips the ripple.
 

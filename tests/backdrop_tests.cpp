@@ -92,6 +92,13 @@ int main(int argc, char** argv) {
                     if (bool(PtInRegion(native,x,y)) != local.contains(QPoint(x,y))) matches=false;
             DeleteObject(native);
             check(matches, "native region must preserve ring hole and gaps, not a rectangular sheet");
+            glass.setVisualRegion(shape);
+            window.setMask(QRegion(QRect(QPoint(),window.size())));glass.setEnabled(true);
+            check(glass.requestAccepted()&&BackdropEffectTestAccess::handle(glass)==quintptr(decoration),"a wide input envelope keeps the same clipped Glass host");
+            const auto builds=glass.shapeBuildCount();
+            for(int i=1;i<=40;++i){glass.setVisualRegion(shape.translated(i,i));check(glass.requestAccepted(),"Glass stays active through drag samples");}
+            check(glass.shapeBuildCount()==builds,"translated Glass reuses its contour at fractional display scaling");
+            glass.setVisualRegion(shape);window.setMask(shape);glass.clearVisualRegion();
             const RECT before = rect;
             window.setPosition(window.position() + QPoint(25, 30));
             settle();

@@ -5,6 +5,7 @@
 #include <QQuickWindow>
 #include <QRegion>
 #include <QRect>
+#include <optional>
 
 namespace tabletpro {
 
@@ -19,9 +20,11 @@ public:
     ~BackdropEffect() override;
 
     void configure(QQuickWindow* window);
-    // Disable before expanding the overlay mask for a docking transition.
-    // Restore the small mask before enabling again. Repeated calls refresh.
+    // Glass geometry is independent of the overlay's temporary input envelope.
     void setEnabled(bool enabled);
+    void setVisualRegion(const QRegion& region);
+    void setVisualRegion(const QRegion& region,qreal diffusion);
+    void clearVisualRegion();
     // Logical pixels outside the body; this never enlarges the input mask.
     void setDiffusion(qreal distance);
     bool enabled() const { return m_enabled; }
@@ -29,6 +32,8 @@ public:
     // DWM accepted the request; this is not proof of the displayed appearance.
     // Windows accessibility, energy policy, and the renderer can affect it.
     bool requestAccepted() const { return m_requestAccepted; }
+    quint64 shapeBuildCount() const { return m_shapeBuildCount; }
+    QRegion visualRegion() const { return m_visualRegion.value_or(m_window ? m_window->mask() : QRegion()); }
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -43,6 +48,8 @@ private:
     quintptr m_nativeHandle = 0;
     void* m_composition = nullptr;
     QRegion m_nativeRegion;
+    std::optional<QRegion> m_visualRegion;
+    quint64 m_shapeBuildCount = 0;
     QRect m_nativeGeometry;
     qreal m_diffusion = 0;
     qreal m_nativeDiffusion = -1;

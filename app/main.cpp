@@ -129,28 +129,24 @@ int main(int argc,char**argv) {
     };
     auto updateMask=[&] {
         const auto* session=studio.runtime();
-        if(session->dragging()||session->transitioning()){
-            // One stable motion envelope preserves pointer capture. Moving the
-            // body/glass regions on every pen sample caused stalls and flicker.
-            if(backdrop.enabled())backdrop.setEnabled(false);
-            const QRegion motion(QRect(QPoint(),overlay->size()));
-            if(motion!=overlay->mask())overlay->setMask(motion);
-            return;
-        }
-        if(rippleEnvelope&&rippleEnvelope->isVisible()){
-            // One fixed local envelope accommodates the small outward ripple
-            // without rebuilding native Glass on every animation frame.
-            if(backdrop.enabled())backdrop.setEnabled(false);
+        if(!session->transitioning()&&!session->dragging()&&rippleEnvelope&&rippleEnvelope->isVisible()){
+            // One cached local Glass contour contains both the held press and
+            // released ripple. The input envelope is independent of Glass.
             const QRegion motion(rippleEnvelope->mapRectToScene(rippleEnvelope->boundingRect()).toAlignedRect(),QRegion::Ellipse);
+            backdrop.setVisualRegion(motion,50.5);
             if(motion!=overlay->mask())overlay->setMask(motion);
+            if(!recovery.pending())backdrop.setEnabled(studio.backdropEnabled());
             return;
         }
         QRegion region;
         for(const auto* name:{"overlayRail","overlayToolbar","overlayMorePanel","overlayResult"}) {
             if(studio.runtime()->parentMenuOpen() && !studio.runtime()->docked() && name!=QString("overlayResult"))continue;
             const auto* item=overlay->findChild<QQuickItem*>(name);
-            if(!item||!item->isVisible())continue;
+            if(!item||!item->isVisible()||item->opacity()<.01)continue;
             auto rect=item->mapRectToScene(item->boundingRect());
+            // QML emits x/y changes separately. Read the shared center so a
+            // drag never builds an intermediate, misaligned Glass contour.
+            if(name==QString("overlayToolbar"))rect=QRectF(session->radialCenter()-QPointF(item->width()/2,item->height()/2),QSizeF(item->width(),item->height()));
             const bool rail=name==QString("overlayRail");
             if(!rail)rect.adjust(-2,-2,2,2);
             const qreal radius=rail?14:name==QString("overlayToolbar")?38:12;
@@ -158,11 +154,7 @@ int main(int argc,char**argv) {
             region+=QRegion(path.toFillPolygon().toPolygon());
         }
         const qreal p=session->dockProgress();
-        const bool moving=session->transitioning()||(surface&&surface->childAnimating());
-        // Clear the compositor material before a motion envelope broadens the
-        // input mask. Otherwise an intermediate frame could frost the monitor.
-        if(moving)backdrop.setEnabled(false);
-        if(session->transitioning())region+=QRect(0,0,overlay->width(),overlay->height());
+        if(session->transitioning()&&surface)region+=surface->motionGlassRegion(p);
         else if(p<=0 && !session->parentMenuOpen()){
             const auto center=session->radialCenter();
             for(const auto& value:settingsSurface&&settingsSurface->isVisible()?settingsSurface->buttons():session->buttons())region+=sector(center,value.toMap()["angle"].toDouble(),41,101,3.141592653589793/6-.02);
@@ -182,9 +174,11 @@ int main(int argc,char**argv) {
             region+=QRegion(hub.toFillPolygon().toPolygon());
             for(const auto& value:session->parentButtons())region+=sector(center,value.toMap()["angle"].toDouble(),41,101,3.141592653589793/6-.02);
         }
-        if(region!=overlay->mask())overlay->setMask(region);
-        backdrop.setDiffusion(session->docked()&&!session->parentMenuOpen()?44.0/4:202.0/4);
-        if(!moving&&!recovery.pending())backdrop.setEnabled(studio.backdropEnabled());
+        const qreal diffusion=session->parentMenuOpen()?50.5:50.5+(11-50.5)*p;
+        backdrop.setVisualRegion(region,diffusion);
+        const QRegion input=session->dragging()||session->transitioning()?QRegion(QRect(QPoint(),overlay->size())):region;
+        if(input!=overlay->mask())overlay->setMask(input);
+        if(!recovery.pending())backdrop.setEnabled(studio.backdropEnabled());
     };
     QObject::connect(&recovery,&DisplayRecovery::refreshMask,&app,updateMask);
     QObject::connect(studio.runtime(),&MenuSession::geometryChanged,&app,updateMask);
@@ -272,9 +266,10 @@ int main(int argc,char**argv) {
                         studio.runtime()->moveRadialCenter(overlay->width()/2,overlay->height()/2);settleFrame(40);overlay->grabWindow();
                         const auto textureBuilds=surface->textureBuildCount();const auto dragStart=studio.runtime()->radialCenter();
                         studio.runtime()->beginRadialDrag();
-                        const bool motionMask=overlay->mask()==QRegion(QRect(QPoint(),overlay->size()))&&!backdrop.enabled();
+                        const bool motionMask=overlay->mask()==QRegion(QRect(QPoint(),overlay->size()))&&backdrop.requestAccepted()&&backdrop.visualRegion()!=overlay->mask();
+                        const auto dragGlassBuilds=backdrop.shapeBuildCount();
                         for(int i=1;i<=32;++i){studio.runtime()->moveRadialCenter(dragStart.x()+i*2,dragStart.y()+i);QCoreApplication::processEvents();}
-                        const bool reused=overlay->grabWindow().save(output+"/runtime-dragging.png")&&surface->textureBuildCount()==textureBuilds;
+                        const bool reused=overlay->grabWindow().save(output+"/runtime-dragging.png")&&surface->textureBuildCount()==textureBuilds&&backdrop.shapeBuildCount()==dragGlassBuilds;
                         studio.runtime()->endRadialDrag();settleFrame(60);
                         const bool settled=backdrop.enabled()&&overlay->mask().boundingRect().width()<overlay->width();
                         QVariantMap parent;for(const auto& value:studio.runtime()->buttons())if(value.toMap()["id"]=="tools")parent=value.toMap();
@@ -296,12 +291,13 @@ int main(int argc,char**argv) {
                         auto* bloomAnimation=overlay->findChild<QObject*>("settingsBloomAnimation");
                         QMetaObject::invokeMethod(bloomAnimation,"pause",Qt::DirectConnection);
                         overlay->setProperty("bloomProgress",.25);settleFrame(50);
-                        const bool pressHeld=overlay->property("centerRippleScale").toDouble()>1.06&&overlay->property("ringRippleDistance").toDouble()<.2
+                        const bool pressHeld=backdrop.requestAccepted()&&overlay->property("ringRippleDistance").toDouble()>4
                             &&overlay->grabWindow().save(output+"/runtime-ripple-press.png");
                         const auto rippleMask=overlay->mask();
+                        const auto rippleBuilds=backdrop.shapeBuildCount();
                         overlay->setProperty("bloomProgress",.57);settleFrame(50);
                         const bool rippleSafe=rippleEnvelope&&rippleEnvelope->isVisible()&&rippleMask==overlay->mask()&&rippleMask.boundingRect().width()==216
-                            &&!backdrop.enabled()&&overlay->property("ringRippleDistance").toDouble()>5&&overlay->grabWindow().save(output+"/runtime-ripple-outward.png");
+                            &&backdrop.requestAccepted()&&backdrop.shapeBuildCount()==rippleBuilds&&overlay->property("ringRippleDistance").toDouble()>5&&overlay->grabWindow().save(output+"/runtime-ripple-outward.png");
                         QMetaObject::invokeMethod(bloomAnimation,"resume",Qt::DirectConnection);
                         QEventLoop ringWait;QTimer::singleShot(1200,&ringWait,&QEventLoop::quit);ringWait.exec();
                         const bool rippleSettled=rippleEnvelope&&!rippleEnvelope->isVisible()&&backdrop.enabled()==studio.backdropEnabled();
@@ -341,7 +337,8 @@ int main(int argc,char**argv) {
                                 QEventLoop frameWait;QTimer::singleShot(600,&frameWait,&QEventLoop::quit);frameWait.exec();
                                 const auto progress=studio.runtime()->dockProgress();
                                 const bool moving=studio.runtime()->transitioning()&&progress>0&&progress<1
-                                    &&surface->isVisible()&&overlay->mask().contains(QPoint(overlay->width()/2,overlay->height()/2));
+                                    &&surface->isVisible()&&overlay->mask().contains(QPoint(overlay->width()/2,overlay->height()/2))
+                                    &&backdrop.requestAccepted()&&backdrop.visualRegion()!=overlay->mask();
                                 const bool saved=overlay->grabWindow().save(output+"/"+name+".png");
                                 qInfo()<<name<<"progress"<<progress<<"visible"<<surface->isVisible()<<"moving"<<moving;
                                 QEventLoop finishWait;

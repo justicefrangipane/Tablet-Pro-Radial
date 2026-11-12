@@ -17,6 +17,8 @@
 #include <QImage>
 #include <QPainterPath>
 #include <QScreen>
+#include <QTabletEvent>
+#include <QPointingDevice>
 #include <iostream>
 #include <stdexcept>
 #include <functional>
@@ -69,6 +71,11 @@ int main(int argc,char**argv){
         expect(animation&&surface&&ring&&rail&&panel,"both layouts exist");
         expect(toolsCenter&&settingsCenter&&hub&&envelope,"ripple visuals and stable center input exist");
         const QString out=QDir::currentPath()+"/settings-bloom-captures";QDir().mkpath(out);
+        QPointingDevice pen("center pressure test",7001,QInputDevice::DeviceType::Stylus,QPointingDevice::PointerType::Pen,QInputDevice::Capability::Position|QInputDevice::Capability::Pressure,1,1);
+        quint64 penTimestamp=1000;
+        const auto penEvent=[&](QEvent::Type type,QPointF point){const bool up=type==QEvent::TabletRelease;
+            QTabletEvent event(type,&pen,point,overlay->mapToGlobal(point.toPoint()),up?0:.6,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,up?Qt::NoButton:Qt::LeftButton);
+            event.setTimestamp(penTimestamp+=20);QCoreApplication::sendEvent(overlay,&event);QCoreApplication::processEvents();};
         for(const bool docked:{false,true}){
             if(docked){studio.runtime()->setReducedMotion(true);studio.runtime()->toggleDock();studio.runtime()->setReducedMotion(false);wait(100);}
             const QString mode=docked?"rail":"radial";
@@ -81,12 +88,20 @@ int main(int argc,char**argv){
                 const auto pixels=full.copy(QRectF(bounds.x()*scale,bounds.y()*scale,bounds.width()*scale,bounds.height()*scale).toAlignedRect());
                 expect(!pixels.isNull(),"native frame captured");pixels.save(out+"/"+mode+"-"+name+".png");return pixels;
             };
-            const int baseline=bronzePixels(capture("closed"));
-            QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);
+            const auto closed=capture("closed");const int baseline=bronzePixels(closed);
+            if(!docked){
+                const auto center=studio.runtime()->radialCenter();penEvent(QEvent::TabletPress,center);wait(160);
+                std::cout<<"center hold: scale "<<toolsCenter->scale()<<" pressed "<<overlay->findChild<QObject*>("radialCenterTap")->property("pressed").toBool()<<" held "<<overlay->property("centerHeld").toBool()<<" ripple "<<overlay->property("rippleAllowed").toBool()<<" hub "<<hub->isVisible()<<" menu "<<overlay->property("menuOpen").toBool()<<"\n";
+                expect(toolsCenter->scale()>1.075&&overlay->property("bloomProgress").toDouble()==0&&!overlay->property("menuOpen").toBool(),"stylus down expands the center without opening settings");
+                expect(envelope->isVisible()&&overlay->property("ringRippleDistance").toDouble()==0,"held press preserves a bounded visual envelope without moving the outer buttons");
+                wait(1050);capture("press-hold");
+                expect(!overlay->property("menuOpen").toBool(),"a long hold does not fire the release action early");
+                penEvent(QEvent::TabletRelease,center);
+            }else QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);
             expect(overlay->property("menuOpen").toBool()&&!surface->isEnabled()&&!actions->isEnabled(),"no hidden tool or premature setting can fire during the fill");
             expect(until([&]{return overlay->property("bloomProgress").toDouble()>.08;}),"bloom advances after the ellipsis");
             QMetaObject::invokeMethod(animation,"pause",Qt::DirectConnection);
-            expect(animation->property("duration").toInt()==(docked?760:960),"floating ripple uses the selected timing while dock timing is preserved");
+            expect(animation->property("duration").toInt()==(docked?360:420),"settings use the faster release timing in both layouts");
             int last=baseline;
             for(const double progress:{.15,.45,.70}){
                 overlay->setProperty("bloomProgress",progress);
@@ -99,13 +114,11 @@ int main(int argc,char**argv){
             if(!docked){
                 const auto toolBuilds=qobject_cast<RadialSurface*>(surface)->textureBuildCount();
                 const auto settingBuilds=qobject_cast<RadialSurface*>(ring)->textureBuildCount();
-                overlay->setProperty("bloomProgress",.25);const auto press=capture("press-hold");
-                expect(toolsCenter->scale()>1.06&&toolsCenter->scale()==settingsCenter->scale()&&overlay->property("ringRippleDistance").toDouble()<.2,"center expands and holds before the ring releases");
                 expect(hub->width()==76&&hub->height()==76&&hub->scale()==1,"the center click and drag target remains stable");
                 overlay->setProperty("bloomProgress",.57);const auto released=capture("outward-ripple");
                 expect(toolsCenter->scale()<1.03&&overlay->property("ringRippleDistance").toDouble()>5&&overlay->property("ringRippleDistance").toDouble()<=6,"outer buttons follow the center by only a few pixels");
                 const auto topEdge=[](const QImage& image){for(int y=0;y<image.height()/2;++y)if(image.pixelColor(image.width()/2,y).alpha()>150)return y;return image.height();};
-                expect(topEdge(released)<topEdge(press)-3,"rendered outer edge actually moves outward");
+                expect(topEdge(released)<topEdge(closed)-3,"rendered outer edge actually moves outward after release");
                 expect(qobject_cast<RadialSurface*>(surface)->textureBuildCount()==toolBuilds&&qobject_cast<RadialSurface*>(ring)->textureBuildCount()==settingBuilds,"ripple movement reuses sharp cached icon textures");
                 expect(envelope->isVisible()&&envelope->width()==216,"ripple has a bounded envelope to prevent native clipping");
             }
@@ -143,6 +156,14 @@ int main(int argc,char**argv){
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);wait(90);studio.setReducedMotion(true);
             expect(overlay->property("settingsReady").toBool()&&!animation->property("running").toBool(),"enabling Reduced motion during a fill settles immediately");
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);studio.setReducedMotion(false);
+            if(!docked){
+                const auto center=studio.runtime()->radialCenter();penEvent(QEvent::TabletPress,center);wait(120);
+                penEvent(QEvent::TabletMove,center+QPointF(12,3));wait(20);
+                penEvent(QEvent::TabletMove,center+QPointF(45,20));wait(220);
+                expect(studio.runtime()->dragging()&&toolsCenter->scale()<1.01,"dragging cancels center press feedback");
+                penEvent(QEvent::TabletRelease,center+QPointF(45,20));wait(80);
+                expect(!overlay->property("menuOpen").toBool()&&!studio.runtime()->dragging(),"releasing a center drag does not open settings");
+            }
         }
         // Observe the real hardware-rendered handoff from assembly to housing.
         studio.runtime()->setReducedMotion(true);studio.runtime()->toggleDock();

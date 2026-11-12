@@ -6,6 +6,7 @@
 #include <QTouchEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QBitmap>
 #include <QQuickWindow>
 #include <QSGGeometryNode>
 #include <QSGOpacityNode>
@@ -413,7 +414,7 @@ void RadialSurface::setButtons(const QVariantList &v){
         for(const auto* key:{"cx","cy","dockX","dockY","fromX","fromY"}){before.remove(key);after.remove(key);}
         artworkChanged=before!=after;
     }
-    m_buttons=v;m_dirty=m_dirty||artworkChanged;m_positionsDirty=true;emit buttonsChanged();update();
+    m_buttons=v;m_dirty=m_dirty||artworkChanged;m_glassDirty=m_glassDirty||artworkChanged;m_positionsDirty=true;emit buttonsChanged();update();
 }
 void RadialSurface::setChildButtons(const QVariantList &v){
     if(m_children==v)return;
@@ -640,6 +641,37 @@ void paintTextures(QPainter &p,const Textures &vertices,const QImage &atlas,doub
     p.restore();
 }
 } // namespace
+
+QRegion RadialSurface::motionGlassRegion(qreal progress) {
+    if(m_buttons.isEmpty())return {};
+    if(!m_glassState)m_glassState=std::make_unique<State>();
+    if(m_glassDirty){m_glassState->rebuild(m_buttons,{},{},true,m_continuousRail,m_bronzeTheme,1);m_glassDirty=false;}
+    else m_glassState->moveRoots(m_buttons);
+    const auto& s=*m_glassState;const double t=clamp(progress);
+    std::vector<QPolygonF> shapes;
+    if(t<=0){for(const auto& b:s.buttons)shapes.push_back(wedge(b.angle,pi/3).translated(b.radialCenter).toFillPolygon());}
+    else {
+        for(int i=0;i<int(s.buttons.size());++i)if(t>=s.ends[i]){
+            QPainterPath tile;tile.addRoundedRect(QRectF(s.buttons[i].dock-QPointF(22,22),QSizeF(44,44)),10,10);shapes.push_back(tile.toFillPolygon());
+        }
+        for(const auto& p:s.particles){
+            if(t>=s.ends[p.tool])continue;
+            const auto pose=quietPose(p,s.buttons[p.tool],t);
+            QTransform transform;transform.translate(pose.position.x(),pose.position.y());transform.rotateRadians(pose.rotation);
+            shapes.push_back(transform.map(QPolygonF(QRectF(-pose.width/2,-pose.height/2,pose.width,pose.height))));
+        }
+    }
+    QRectF extent;for(const auto& polygon:shapes)extent|=polygon.boundingRect();
+    const QRect bounds=extent.toAlignedRect();if(bounds.isEmpty())return {};
+    // Rasterize coverage, not the artwork: this follows the actual fragment
+    // poses without expensive unions of thousands of tiny native regions.
+    const qreal sample=std::min(qreal(1),qreal(512)/std::max(bounds.width(),bounds.height()));
+    QImage mask(qCeil(bounds.width()*sample),qCeil(bounds.height()*sample),QImage::Format_Mono);
+    mask.setColor(0,qRgb(255,255,255));mask.setColor(1,qRgb(0,0,0));mask.fill(0);
+    {QPainter painter(&mask);painter.scale(sample,sample);painter.translate(-bounds.topLeft());painter.setPen(Qt::NoPen);painter.setBrush(Qt::color1);
+        for(const auto& polygon:shapes)painter.drawPolygon(polygon);}
+    return QTransform::fromScale(1/sample,1/sample).map(QRegion(QBitmap::fromImage(mask))).translated(bounds.topLeft());
+}
 
 bool RadialSurface::prepareGeometry(qreal rasterScale) {
     rasterScale=std::max(qreal(1),rasterScale);

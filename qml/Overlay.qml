@@ -30,14 +30,13 @@ Window {
     readonly property bool settingsVisible: menuOpen || bloomProgress > 0
     readonly property bool toolsReady: !menuOpen && bloomProgress <= 0
     readonly property bool instantSettings: studio.reducedMotion || radialBloom.softwareRenderer
-    readonly property int settingsDuration: railMode ? 760 : 960
+    readonly property int settingsDuration: railMode ? 360 : 420
     readonly property bool rippleAllowed: !railMode && !morphing && !instantSettings
-    readonly property real centerPress: bloomProgress < .17 ? smoothProgress(bloomProgress/.17)
-        : bloomProgress < .31 ? 1 : 1-smoothProgress((bloomProgress-.31)/.31)
-    readonly property real ringRelease: bloomProgress < .28 ? 0 : bloomProgress < .57
-        ? smoothProgress((bloomProgress-.28)/.29) : 1-smoothProgress((bloomProgress-.57)/.37)
-    readonly property real centerRippleScale: rippleAllowed ? 1+.08*(.86*centerPress+.14*smoothProgress(bloomProgress)) : 1
-    readonly property real ringRippleDistance: rippleAllowed ? 6*(.86*ringRelease+.14*smoothProgress(bloomProgress)) : 0
+    readonly property bool centerHeld: visible && hub.visible && centerTap.pressed && !centerDrag.active && !studio.runtime.dragging && !editingButtons
+    property real centerPressure: centerHeld && rippleAllowed ? 1 : 0
+    Behavior on centerPressure { NumberAnimation { duration: overlay.instantSettings ? 0 : overlay.centerHeld ? 90 : 180; easing.type: Easing.OutCubic } }
+    readonly property real centerRippleScale: rippleAllowed ? 1+.08*centerPressure : 1
+    readonly property real ringRippleDistance: rippleAllowed ? 6*Math.sin(Math.PI*bloomProgress) : 0
     function smoothProgress(value) { const p=Math.max(0,Math.min(1,value)); return p*p*(3-2*p); }
     function toolButtons() {
         const distance=ringRippleDistance
@@ -66,7 +65,7 @@ Window {
         id: settingsBloomAnimation
         objectName: "settingsBloomAnimation"
         target: overlay; property: "bloomProgress"
-        from: 0; to: 1; duration: 960
+        from: 0; to: 1; duration: 420
         easing.type: Easing.Linear
     }
     property bool editingButtons: false
@@ -215,7 +214,7 @@ Window {
             anchors.fill: parent
             buttons: overlay.options()
             bronzeTheme: true
-            glassEnabled: studio.backdropEnabled && overlay.settingsReady
+            glassEnabled: studio.backdropEnabled
             reducedMotion: studio.reducedMotion
             property string pressedId: ""
             onPressed: (pointerId,x,y) => { pressedId=hitRoot(x,y);selectedId=pressedId; }
@@ -240,7 +239,7 @@ Window {
         objectName: "settingsRippleEnvelope"
         x: studio.runtime.radialCenter.x-108; y: studio.runtime.radialCenter.y-108
         width: 216; height: 216
-        visible: overlay.visible && overlay.rippleAllowed && overlay.bloomProgress > 0 && overlay.bloomProgress < 1
+        visible: overlay.visible && overlay.rippleAllowed && (overlay.centerPressure > .001 || (overlay.bloomProgress > 0 && overlay.bloomProgress < 1))
     }
     Item {
         id: hub
@@ -273,8 +272,11 @@ Window {
         HoverTip { objectName: "centerHoverTip"; anchorItem: hub; avoidMargin: 63; text: centerButton.hint; requested: centerHover.hovered && !centerTap.pressed && !centerDrag.active }
         TapHandler {
             id: centerTap
+            objectName: "radialCenterTap"
             acceptedButtons: Qt.LeftButton
             gesturePolicy: TapHandler.ReleaseWithinBounds
+            longPressThreshold: 0
+            enabled: !centerDrag.active
             onTapped: centerButton.clicked()
         }
         RadialDragHandler {
@@ -295,9 +297,9 @@ Window {
             anchors.fill: parent;anchors.margins: 1;radius: 13
             gradient: Gradient {
                 orientation: Gradient.Horizontal
-                GradientStop { position: 0; color: overlay.settingsReady ? "#f06b4b35" : "#6b4b35" }
-                GradientStop { position: 0.3; color: overlay.settingsReady ? "#f050392b" : "#50392b" }
-                GradientStop { position: 1; color: overlay.settingsReady ? "#f52f241f" : "#2f241f" }
+                GradientStop { position: 0; color: studio.backdropEnabled ? "#f06b4b35" : "#6b4b35" }
+                GradientStop { position: 0.3; color: studio.backdropEnabled ? "#f050392b" : "#50392b" }
+                GradientStop { position: 1; color: studio.backdropEnabled ? "#f52f241f" : "#2f241f" }
             }
             border.width: 1;border.color: "#ad8055"
             Rectangle { x: 1;y: 44;width: 42;height: 1;color: "#946b46" }

@@ -64,6 +64,7 @@ struct Surface {
     SpriteVisual visual{nullptr};
     CompositionGraphicsDevice graphics{nullptr};
     CompositionDrawingSurface mask{nullptr};
+    int maskWidth=0,maskHeight=0;
     CompositionEffectBrush brush{nullptr};
     com_ptr<ID3D11Device> d3d;
     com_ptr<ID2D1Device> d2d;
@@ -101,8 +102,15 @@ std::vector<uint32_t> opacityPixels(const RECT* rectangles,unsigned count,int wi
 }
 void update(Surface& surface,const RECT* rectangles,unsigned count,int width,int height,float diffusion){
     if(!rectangles||!count||count>100000||width<=0||height<=0||width>8192||height>8192||uint64_t(width)*height>16000000||!std::isfinite(diffusion)||diffusion<0||diffusion>800)throw hresult_invalid_argument();
-    const auto pixels=opacityPixels(rectangles,count,width,height,diffusion);
-    auto mask=surface.graphics.CreateDrawingSurface({float(width),float(height)},Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,Windows::Graphics::DirectX::DirectXAlphaMode::Premultiplied);
+    // Sample only the soft opacity contour; live blur and Qt artwork stay at
+    // native resolution. Bound this work during wide particle transitions.
+    const float sampleScale=std::min(1.0f,512.0f/std::max(width,height));
+    const int maskWidth=int(std::ceil(width*sampleScale)),maskHeight=int(std::ceil(height*sampleScale));
+    std::vector<RECT> sampled;sampled.reserve(count);
+    for(unsigned i=0;i<count;++i){const auto& r=rectangles[i];sampled.push_back({LONG(std::floor(r.left*sampleScale)),LONG(std::floor(r.top*sampleScale)),LONG(std::ceil(r.right*sampleScale)),LONG(std::ceil(r.bottom*sampleScale))});}
+    const auto pixels=opacityPixels(sampled.data(),count,maskWidth,maskHeight,diffusion*sampleScale);
+    const bool resized=!surface.mask||surface.maskWidth!=maskWidth||surface.maskHeight!=maskHeight;
+    auto mask=resized?surface.graphics.CreateDrawingSurface({float(maskWidth),float(maskHeight)},Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,Windows::Graphics::DirectX::DirectXAlphaMode::Premultiplied):surface.mask;
     auto interop=mask.as<ABI::Windows::UI::Composition::ICompositionDrawingSurfaceInterop>();
     com_ptr<ID2D1DeviceContext> context;POINT offset{};
     check_hresult(interop->BeginDraw(nullptr,__uuidof(ID2D1DeviceContext),context.put_void(),&offset));
@@ -111,11 +119,12 @@ void update(Surface& surface,const RECT* rectangles,unsigned count,int width,int
         context->Clear(D2D1::ColorF(0,0,0,0));
         com_ptr<ID2D1Bitmap1> bitmap;
         const auto properties=D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
-        check_hresult(context->CreateBitmap(D2D1::SizeU(width,height),pixels.data(),width*4,properties,bitmap.put()));
-        context->DrawBitmap(bitmap.get(),D2D1::RectF(0,0,float(width),float(height)),1,D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+        check_hresult(context->CreateBitmap(D2D1::SizeU(maskWidth,maskHeight),pixels.data(),maskWidth*4,properties,bitmap.put()));
+        context->DrawBitmap(bitmap.get(),D2D1::RectF(0,0,float(maskWidth),float(maskHeight)),1,D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
     }catch(...){interop->EndDraw();throw;}
     check_hresult(interop->EndDraw());
-    surface.brush.SetSourceParameter(L"Mask",surface.compositor.CreateSurfaceBrush(mask));
+    if(resized){auto maskBrush=surface.compositor.CreateSurfaceBrush(mask);maskBrush.Stretch(CompositionStretch::Fill);surface.brush.SetSourceParameter(L"Mask",maskBrush);}
+    surface.maskWidth=maskWidth;surface.maskHeight=maskHeight;
     surface.mask=mask;surface.visual.Size({float(width),float(height)});
 }
 }

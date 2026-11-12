@@ -13,6 +13,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <cmath>
+#include <algorithm>
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -33,10 +34,10 @@ LRESULT CALLBACK pattern(HWND window,UINT message,WPARAM w,LPARAM l){
         }EndPaint(window,&ps);return 0;
     }return DefWindowProcW(window,message,w,l);
 }
-QImage capture(HWND ownedBackground){
+QImage capture(HWND ownedBackground,HWND ownedOverlay=nullptr){
     RECT rect;GetWindowRect(ownedBackground,&rect);
     POINT corner{rect.left+3,rect.top+3};
-    check(WindowFromPoint(corner)==ownedBackground,"test pattern must cover capture area");
+    check(WindowFromPoint(corner)==ownedBackground||(ownedOverlay&&WindowFromPoint(corner)==ownedOverlay),"test pattern must cover capture area");
     int width=rect.right-rect.left,height=rect.bottom-rect.top;
     auto screen=GetDC(nullptr);auto memory=CreateCompatibleDC(screen);void* bits=nullptr;
     BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=width;info.bmiHeader.biHeight=-height;info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;
@@ -111,6 +112,29 @@ int main(int argc,char** argv){
         check(difference(menuOn.pixelColor(point(335,155)),menuChanged.pixelColor(point(335,155)))>30,"rendered Qt menu fill must reveal live glass colors");
         check(preservesExternalFocus(foreground),"rendered menu must not take focus");
         surface.setVisible(false);glass.setEnabled(false);
+        // The input envelope can cover the window while Glass tracks only the
+        // animated fragment coverage. Compare real backdrop pixels each time.
+        window.setMask(QRegion(QRect(QPoint(),window.size())));
+        settle();const auto motionPlain=capture(background,overlay);
+        std::vector<qint64> frameCosts;
+        for(int i=0;i<=30;++i){
+            QElapsedTimer cost;cost.start();
+            const auto region=surface.motionGlassRegion(i/30.0);
+            glass.setVisualRegion(region,50.5+(11-50.5)*i/30.0);glass.setEnabled(true);
+            frameCosts.push_back(cost.elapsed());
+            check(!region.isEmpty()&&region!=window.mask()&&glass.requestAccepted(),"Glass remains clipped and enabled for every docking frame");
+            if(i==3||i==12||i==24){
+                QRect largest;for(const auto r:region)if(r.width()*r.height()>largest.width()*largest.height())largest=r;
+                const auto center=largest.center();settle(100);const auto frame=capture(background,overlay);
+                const auto sample=rect(center.x()-8,center.y()-8,16,16);
+                check(detail(frame,sample)<detail(motionPlain,sample)*.6,"moving Glass visibly blurs the live background");
+                check(change(frame,motionPlain,rect(590,420,30,30))<3,"animation does not frost the rest of the desktop");
+            }
+        }
+        std::sort(frameCosts.begin(),frameCosts.end());
+        std::cout<<"motion Glass frame p95 "<<frameCosts[29]<<" ms, max "<<frameCosts.back()<<" ms\n";
+        check(frameCosts[29]<50,"animated Glass work stays bounded instead of stalling the interface");
+        glass.setEnabled(false);glass.clearVisualRegion();
         QImage dockDiffusion,radialDiffusion;
         for(bool docked:{true,false}){
             const QRegion body=docked?QRegion(QRect(300,140,44,200)):QRegion(QRect(219,139,202,202),QRegion::Ellipse);
