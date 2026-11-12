@@ -32,6 +32,9 @@ class StudioController : public QObject {
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY changed)
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY changed)
     Q_PROPERTY(bool soundEnabled READ soundEnabled WRITE setSoundEnabled NOTIFY changed)
+    Q_PROPERTY(QString soundTheme READ soundTheme WRITE setSoundTheme NOTIFY changed)
+    Q_PROPERTY(QStringList soundThemeIds READ availableSoundThemeIds CONSTANT)
+    Q_PROPERTY(QStringList soundThemeNames READ availableSoundThemeNames CONSTANT)
     Q_PROPERTY(bool backdropEnabled READ backdropEnabled WRITE setBackdropEnabled NOTIFY changed)
     Q_PROPERTY(bool reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)
@@ -62,6 +65,12 @@ public:
     bool canUndo() const { return !undo_.empty(); }
     bool canRedo() const { return !redo_.empty(); }
     bool soundEnabled() const { return soundEnabled_; }
+    QString soundTheme() const { return audio_.theme(); }
+    QStringList availableSoundThemeIds() const { return tabletpro::soundThemeIds(); }
+    QStringList availableSoundThemeNames() const { return tabletpro::soundThemeNames(); }
+    void setSoundTheme(const QString& theme);
+    Q_INVOKABLE void previewSound() { audio_.preview(); }
+    Q_INVOKABLE void playMenuSound(const QString& cue) { audio_.play(cue); }
     bool backdropEnabled() const { return backdropEnabled_; }
     bool reducedMotion() const { return reducedMotion_; }
     QString status() const { return status_; }

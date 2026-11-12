@@ -1,5 +1,6 @@
 #pragma once
 #include "core/model.h"
+#include "SoundTheme.h"
 #include <QByteArray>
 #include <QString>
 #include <optional>
@@ -13,6 +14,7 @@ struct RadialSettings {
     bool reducedMotion = false;
     int durationMs = 1640;
     bool backdropEnabled = true;
+    QString soundTheme = defaultSoundTheme();
     bool operator==(const RadialSettings&) const = default;
 };
 struct DecodedRadialDocument {

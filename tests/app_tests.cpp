@@ -29,6 +29,34 @@ void check(bool condition, const std::string& message) {
     ++checks;
     if (!condition) throw std::runtime_error(message);
 }
+void soundTests(const QString& temporaryPath) {
+    StudioController studio(nullptr,temporaryPath+"/sound-config",true);
+    check(studio.soundTheme()=="crystal-whisper"&&!studio.soundEnabled(),"Crystal whisper defaults without changing mute");
+    auto* audio=studio.findChild<AudioFeedback*>("audioFeedback");
+    check(audio&&audio->findChildren<QSoundEffect*>().size()==15,"all five complete sound sets are embedded");
+    QElapsedTimer deadline;deadline.start();
+    auto ready=[&]{for(auto* effect:audio->findChildren<QSoundEffect*>())if(effect->status()!=QSoundEffect::Ready)return false;return true;};
+    while(!ready()&&deadline.elapsed()<4000){QEventLoop loop;QTimer::singleShot(25,&loop,&QEventLoop::quit);loop.exec();}
+    check(ready(),"Qt decodes every packaged WAV before playback");
+    int played=0;QString actualTheme,actualCue;bool wasPreview=false;
+    QObject::connect(audio,&AudioFeedback::cuePlayed,[&](const QString& theme,const QString& cue,bool preview){++played;actualTheme=theme;actualCue=cue;wasPreview=preview;});
+    studio.playMenuSound("open");check(played==0,"muted interaction is silent");
+    for(const auto& theme:soundThemeIds()){
+        studio.setSoundTheme(theme);studio.previewSound();
+        check(actualTheme==theme&&actualCue=="open"&&wasPreview&&!studio.soundEnabled(),"explicit preview plays selected style while preserving mute");
+    }
+    studio.setSoundTheme("unknown");check(studio.soundTheme()=="crystal-whisper","unknown theme cannot erase selected style");
+    studio.setSoundEnabled(true);
+    for(const auto& cue:{"press","open","close"}){studio.playMenuSound(cue);check(actualCue==cue&&!wasPreview,"interaction maps to matching press/open/close clip");}
+    studio.playMenuSound("back");check(actualCue=="close","parent Back uses the closing sound");
+    studio.setSoundEnabled(false);const int muted=played;studio.playMenuSound("commit");check(played==muted,"Sound off silences all action cues");
+    for(auto* effect:audio->findChildren<QSoundEffect*>())check(!effect->isPlaying(),"muting stops a current voice");
+    studio.setSoundTheme("walnut-tap");
+    {StudioController restored(nullptr,temporaryPath+"/sound-config",true);check(restored.soundTheme()=="walnut-tap"&&!restored.soundEnabled(),"restart preserves style independently of mute");}
+    QSettings().setValue("soundTheme","unavailable");
+    {StudioController restored(nullptr,temporaryPath+"/sound-config",true);check(restored.soundTheme()=="crystal-whisper","invalid saved style falls back to Crystal whisper");}
+    studio.setSoundTheme(defaultSoundTheme());
+}
 QVariantMap button(const MenuSession& session, const QString& id, bool child = false) {
     for (const auto& item : child ? (session.parentMenuOpen() ? session.parentButtons() : session.childButtons()) : session.buttons()) {
         const auto entry = item.toMap();
@@ -251,6 +279,13 @@ void testDocumentCodecTests() {
     const auto plain=decodeRadialDocument(encodeProfile(profile));
     check(plain.profile&&*plain.profile==profile&&!plain.settings,"plain schema 1 remains readable without imported settings");
     auto root=QJsonDocument::fromJson(encoded).object();
+    auto legacy=root;auto legacyPrefs=legacy["settings"].toObject();legacyPrefs.remove("soundTheme");legacy["settings"]=legacyPrefs;
+    const auto legacyResult=decodeRadialDocument(QJsonDocument(legacy).toJson());
+    check(legacyResult.settings&&legacyResult.settings->soundTheme=="crystal-whisper","older documents without a style use Crystal whisper");
+    for(const auto& invalid:{QJsonValue("unknown"),QJsonValue(4),QJsonValue(false),QJsonValue(QJsonValue::Null)}){
+        auto bad=root;auto values=bad["settings"].toObject();values["soundTheme"]=invalid;bad["settings"]=values;
+        check(!decodeRadialDocument(QJsonDocument(bad).toJson()).profile,"invalid imported sound style rejects the document");
+    }
     root.remove("settings");
     check(decodeRadialDocument(QJsonDocument(root).toJson()).profile&&!decodeRadialDocument(QJsonDocument(root).toJson()).settings,
           "test document may omit settings without inventing defaults");
@@ -353,6 +388,7 @@ void controllerTests(const QString& temporaryPath) {
 
 void testDocumentControllerTests(const QString& temporaryPath) {
     StudioController controller(nullptr, temporaryPath + "/config");
+    controller.setSoundTheme("tiny-gears");
     controller.setSoundEnabled(true);controller.setReducedMotion(true);controller.setBackdropEnabled(false);controller.preview()->setDurationMs(1111);
     const auto appliedLabel=button(*controller.runtime(),"brush")["label"];
     controller.selectNode("brush");controller.renameSelected("Saved test brush");
@@ -364,11 +400,12 @@ void testDocumentControllerTests(const QString& temporaryPath) {
     check(button(*controller.runtime(),"brush")["label"]==appliedLabel,"test save does not publish or execute actions");
     QFile saved(target.toLocalFile());check(saved.open(QIODevice::ReadOnly),"saved test document exists");
     const auto result=decodeRadialDocument(saved.readAll());saved.close();
-    check(result.profile&&*result.profile==expectedProfile&&result.settings==RadialSettings{true,true,1111,false},"saved file contains edited menu plus current settings");
+    check(result.profile&&*result.profile==expectedProfile&&result.settings==RadialSettings{true,true,1111,false,"tiny-gears"},"saved file contains edited menu plus current settings");
 
-    controller.setSoundEnabled(false);controller.setReducedMotion(false);controller.setBackdropEnabled(true);controller.preview()->setDurationMs(1640);
+    controller.setSoundEnabled(false);controller.setSoundTheme("felt-click");controller.setReducedMotion(false);controller.setBackdropEnabled(true);controller.preview()->setDurationMs(1640);
     controller.renameSelected("Recover before open");controller.loadFile(target);
     check(controller.error().isEmpty()&&controller.hasPendingSettings()&&controller.draft()==expectedProfile,"opening stages test document");
+    check(controller.soundTheme()=="felt-click","opening a document leaves its sound style pending until Apply");
     check(!controller.soundEnabled()&&!controller.reducedMotion()&&controller.backdropEnabled()&&controller.preview()->durationMs()==1640,
           "opening test document leaves live preferences untouched until Apply");
     check(controller.runtime()->durationMs()==1640&&button(*controller.runtime(),"brush")["label"]==appliedLabel,
@@ -393,6 +430,7 @@ void testDocumentControllerTests(const QString& temporaryPath) {
     check(!controller.dirty()&&!controller.hasPendingSettings()&&!controller.soundEnabled(),"discard cancels imported preferences without applying them");
     controller.undo();check(controller.hasPendingSettings()&&controller.draft()==expectedProfile,"discard remains undoable for both menu and settings");
     controller.applyDraft();
+    check(controller.soundTheme()=="tiny-gears","Apply restores imported sound style");
     check(controller.error().isEmpty()&&!controller.dirty()&&!controller.hasPendingSettings(),"Apply publishes complete test document");
     check(controller.soundEnabled()&&controller.reducedMotion()&&!controller.backdropEnabled()&&controller.preview()->durationMs()==1111&&controller.runtime()->durationMs()==1111,
           "Apply activates all imported appearance preferences");
@@ -678,7 +716,7 @@ int main(int argc, char** argv) {
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, temporary.path() + "/settings");
     int result = EXIT_SUCCESS;
     try {
-        modeTransitionTests();
+        soundTests(temporary.path());modeTransitionTests();
         inPlaceParentTests();
         parentMenuTests(temporary.path()); reparentTests(temporary.path()); modifierTests(temporary.path()); codecTests(); testDocumentCodecTests(); controllerTests(temporary.path()); testDocumentControllerTests(temporary.path()); sessionTests(); invocationGeometryTests(); compactDockFanTests(); queuedSessionTests();
         std::cout << "PASS: " << checks << " application integration checks\n";

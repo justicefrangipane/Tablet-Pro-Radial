@@ -3,20 +3,27 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QSoundEffect>
-#include <QTemporaryDir>
+#include "SoundTheme.h"
 
 namespace tabletpro {
 class AudioFeedback : public QObject {
     Q_OBJECT
 public:
     explicit AudioFeedback(QObject* parent=nullptr);
-    void setEnabled(bool value) { enabled_=value; if (!value) for (auto* effect : effects_) effect->stop(); }
+    void setEnabled(bool value);
+    void setTheme(const QString& theme);
+    QString theme() const { return theme_; }
+    void preview();
+signals:
+    void cuePlayed(const QString& theme, const QString& cue, bool preview);
 public slots:
     void play(const QString& cue);
 private:
-    QTemporaryDir directory_;
+    void stop();
+    void playCue(const QString& cue, bool preview);
     QHash<QString,QSoundEffect*> effects_;
     QElapsedTimer limiter_;
+    QString theme_=defaultSoundTheme();
     bool enabled_=false;
 };
 }

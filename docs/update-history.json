@@ -2,6 +2,19 @@
   "app": "Tablet Pro Radial",
   "releases": [
     {
+      "version": "0.3.26",
+      "date": "2026-11-12",
+      "title": "Quiet sound styles",
+      "new": [
+        "Choose Felt click, Walnut tap, Bamboo ticks, Tiny gears, or Crystal whisper in the editor's Sound style settings. Crystal whisper is the default style.",
+        "Preview a sound before using it. Your selected style is saved and included when you save a portable test document."
+      ],
+      "improved": [
+        "A soft press sound follows the center press. Opening plays when you release, and closing plays with the reverse animation in both radial and docked mode.",
+        "Button and parent-menu sounds use the selected subtle style. Your existing Sound on or off preference is preserved; Preview does not change it."
+      ]
+    },
+    {
       "version": "0.3.25",
       "date": "2026-11-12",
       "title": "Live Glass and a faster press-to-release menu",

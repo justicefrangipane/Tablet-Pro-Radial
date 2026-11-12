@@ -33,6 +33,7 @@ Window {
     readonly property int settingsDuration: railMode ? 360 : 420
     readonly property bool rippleAllowed: !railMode && !morphing && !instantSettings
     readonly property bool centerHeld: visible && hub.visible && centerTap.pressed && !centerDrag.active && !studio.runtime.dragging && !editingButtons
+    onCenterHeldChanged: if(centerHeld)studio.playMenuSound("press")
     property real centerPressure: centerHeld && rippleAllowed ? 1 : 0
     Behavior on centerPressure { NumberAnimation { duration: overlay.instantSettings ? 0 : overlay.centerHeld ? 90 : 180; easing.type: Easing.OutCubic } }
     readonly property real centerRippleScale: rippleAllowed ? 1+.08*centerPressure : 1
@@ -45,6 +46,7 @@ Window {
         })
     }
     onMenuOpenChanged: {
+        if(visible&&!morphing)studio.playMenuSound(menuOpen ? "open" : "close")
         resultMessage=""
         const current=bloomProgress
         const goal=menuOpen ? 1 : 0
@@ -358,6 +360,7 @@ Window {
         opacity: railHousing.opacity
         enabled: overlay.railMode
         dimWhenDisabled: false
+        onPressedChanged: if(pressed&&!overlay.editingButtons)studio.playMenuSound("press")
         onClicked: {if(overlay.editingButtons)overlay.editingButtons=false;else overlay.menuOpen=!overlay.menuOpen;}
     }
     ParentMenu {

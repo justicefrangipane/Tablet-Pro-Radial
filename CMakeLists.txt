@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(TabletProRadial VERSION 0.3.25 LANGUAGES CXX)
+project(TabletProRadial VERSION 0.3.26 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -35,6 +35,22 @@ if(TABLETPRO_BUILD_DESKTOP)
     platform/StylusInput.cpp platform/StylusInput.h
     platform/BackdropEffect.cpp platform/BackdropEffect.h
     ui/RadialSurface.cpp ui/RadialSurface.h)
+  qt_add_resources(radial_studio radial_sounds PREFIX "/sounds" BASE assets/sounds FILES
+    assets/sounds/felt-click-press.wav
+    assets/sounds/felt-click-open.wav
+    assets/sounds/felt-click-close.wav
+    assets/sounds/walnut-tap-press.wav
+    assets/sounds/walnut-tap-open.wav
+    assets/sounds/walnut-tap-close.wav
+    assets/sounds/bamboo-ticks-press.wav
+    assets/sounds/bamboo-ticks-open.wav
+    assets/sounds/bamboo-ticks-close.wav
+    assets/sounds/tiny-gears-press.wav
+    assets/sounds/tiny-gears-open.wav
+    assets/sounds/tiny-gears-close.wav
+    assets/sounds/crystal-whisper-press.wav
+    assets/sounds/crystal-whisper-open.wav
+    assets/sounds/crystal-whisper-close.wav)
   target_link_libraries(radial_studio PUBLIC radial_core Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Multimedia)
   if(WIN32)
     target_link_libraries(radial_studio PRIVATE user32 gdi32 dwmapi hid)

@@ -1,4 +1,14 @@
-# Local candidate: 0.3.25
+# Local candidate: 0.3.26
+
+Five approved subtle sound styles are embedded: Felt click, Walnut tap, Bamboo ticks, Tiny gears, and Crystal whisper (default). The editor has a Sound style picker and Preview button. Choosing a style saves immediately; the independent Sound on/off preference is preserved. Preview works while muted without changing that preference. Portable test documents include the style, old documents default to Crystal whisper, and invalid styles are rejected before applying a document.
+
+The center plays a soft press when held, an opening clip on release, and a closing clip with the reverse animation. The dock shares the same selected style. Existing hover, action, parent-menu and docking cues also use the quiet clips. A single short voice bounds overlap; hover feedback is quieter.
+
+Nine Windows suites pass, including decoding all 15 embedded clips, style persistence, muted playback, explicit previews, portable-document compatibility, native pen hold/release sound timing, dock opening/closing, and rendered Glass. The separate native modifier-input suite could not acquire foreground focus (the foreground remained Unfolded Bible); this check is not claimed as passed. The complete packaged app startup check and source/payload hashes are recorded outside the source archive. Ten additional sound auditions are separate previews and are not included as app choices.
+
+Not published. Exact 0.3.26 notes require Justice or Bassem approval. Local installation has not been performed; the running 0.3.25 was not closed because app control timed out.
+
+# Previous local candidate: 0.3.25
 
 The floating center expands by 8% over 90 ms while a pen, finger or mouse is held down. Release starts the 420 ms settings ripple and bronze fill while the center relaxes over 180 ms. A long hold does not open settings early; dragging cancels the press feedback and retains movement-only behavior. Docked settings now fill in 360 ms. Closing still reverses the current animation, and Reduced motion skips movement.
 

@@ -822,6 +822,24 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
                         StudioSwitch { text: "Reduce motion"; checked: studio.reducedMotion; onToggled: studio.reducedMotion = checked }
                     }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { text: "Sound style"; color: "#9fb6cd"; font.pixelSize: 11 }
+                        StudioCombo {
+                            objectName: "soundStylePicker"
+                            Layout.fillWidth: true
+                            model: studio.soundThemeNames
+                            currentIndex: studio.soundThemeIds.indexOf(studio.soundTheme)
+                            Accessible.name: "Sound style"
+                            onActivated: studio.soundTheme=studio.soundThemeIds[currentIndex]
+                        }
+                        StudioButton {
+                            objectName: "previewSoundButton"
+                            text: "Preview"
+                            hint: "Hear this sound without changing Sound on or off"
+                            onClicked: studio.previewSound()
+                        }
+                    }
                 }
             }
 

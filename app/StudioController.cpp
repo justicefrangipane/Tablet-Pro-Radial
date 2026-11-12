@@ -21,6 +21,7 @@ StudioController::StudioController(QObject* parent,const QString& configDirector
     if(draft_==radial::legacyDefaultProfile()) draft_=applied_=radial::defaultProfile();
     for(const auto& slot:draft_.rootSlots)if(slot){selected_=q(*slot);break;}
     QSettings settings;setSoundEnabled(settings.value("sound",false).toBool());setReducedMotion(settings.value("reducedMotion",false).toBool());
+    setSoundTheme(settings.value("soundTheme",defaultSoundTheme()).toString());
     setBackdropEnabled(settings.value("backdrop",true).toBool());
     preview_.setProfile(draft_);runtime_.setProfile(applied_);
     const int duration=settings.value("durationMs",1640).toInt();preview_.setDurationMs(duration);runtime_.setDurationMs(duration);
@@ -202,11 +203,11 @@ void StudioController::applyDraft(){
     }
     if(!write(appliedPath(),encodeProfile(draft_)))return;
     applied_=draft_;runtime_.setProfile(applied_);
-    if(pendingSettings_){const auto preferences=*pendingSettings_;pendingSettings_.reset();setSoundEnabled(preferences.soundEnabled);setReducedMotion(preferences.reducedMotion);setBackdropEnabled(preferences.backdropEnabled);preview_.setDurationMs(preferences.durationMs);}
+    if(pendingSettings_){const auto preferences=*pendingSettings_;pendingSettings_.reset();setSoundEnabled(preferences.soundEnabled);setSoundTheme(preferences.soundTheme);setReducedMotion(preferences.reducedMotion);setBackdropEnabled(preferences.backdropEnabled);preview_.setDurationMs(preferences.durationMs);}
     status_="Applied · the next gesture uses this revision";emit changed();
 }
 void StudioController::discardDraft(){if(!dirty())return;edit([&]{draft_=applied_;pendingSettings_.reset();});status_="Draft restored to the applied menu · Undo can recover it";emit changed();}
-RadialSettings StudioController::currentSettings()const{return {soundEnabled_,reducedMotion_,preview_.durationMs(),backdropEnabled_};}
+RadialSettings StudioController::currentSettings()const{return {soundEnabled_,reducedMotion_,preview_.durationMs(),backdropEnabled_,soundTheme()};}
 QUrl StudioController::suggestedTestFile()const{return QUrl::fromLocalFile(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)+"/Test.radial.json");}
 void StudioController::saveFile(const QUrl&url){saveTestFile(url);}
 void StudioController::saveCurrentFile(){if(currentFile_.isEmpty()){error_="Choose Save test radial… to create a file.";emit changed();return;}saveTestFile(currentFile_);}
@@ -229,6 +230,7 @@ void StudioController::loadFile(const QUrl&url){
     edit([&]{draft_=*result.profile;pendingSettings_=result.settings;currentFile_=url;selected_.clear();});
     error_.clear();refresh();status_=result.settings?"Opened menu and file settings as a draft · Apply to use both":"Opened menu as a draft · current settings unchanged";emit changed();
 }
+void StudioController::setSoundTheme(const QString& theme){if(!soundThemeIds().contains(theme))return;audio_.setTheme(theme);QSettings().setValue("soundTheme",theme);emit changed();}
 void StudioController::setSoundEnabled(bool value){soundEnabled_=value;audio_.setEnabled(value);QSettings().setValue("sound",value);emit changed();}
 void StudioController::setBackdropEnabled(bool value){backdropEnabled_=value;QSettings().setValue("backdrop",value);emit changed();}
 void StudioController::setReducedMotion(bool value){reducedMotion_=value;preview_.setReducedMotion(value);runtime_.setReducedMotion(value);QSettings().setValue("reducedMotion",value);emit changed();}

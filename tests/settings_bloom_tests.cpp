@@ -58,6 +58,9 @@ int main(int argc,char**argv){
         auto* overlay=editor->findChild<QQuickWindow*>("runtimeOverlay");expect(overlay,"overlay exists");
         overlay->setGeometry(100,100,720,600);studio.runtime()->setViewport(720,600);studio.runtime()->setRadialCenter(360,300);
         overlay->show();wait(150);
+        QStringList soundCues;
+        QObject::connect(studio.findChild<tabletpro::AudioFeedback*>("audioFeedback"),&tabletpro::AudioFeedback::cuePlayed,[&](const QString&,const QString& cue,bool){soundCues.append(cue);});
+        studio.setSoundEnabled(true);
         expect(overlay->rendererInterface()->graphicsApi()!=QSGRendererInterface::Software,"visual check uses a hardware shader backend");
         auto* animation=overlay->findChild<QObject*>("settingsBloomAnimation");
         auto* surface=overlay->findChild<QQuickItem*>("runtimeSurface");
@@ -91,14 +94,18 @@ int main(int argc,char**argv){
             const auto closed=capture("closed");const int baseline=bronzePixels(closed);
             if(!docked){
                 const auto center=studio.runtime()->radialCenter();penEvent(QEvent::TabletPress,center);wait(160);
+                expect(!soundCues.isEmpty()&&soundCues.last()=="press","pen press plays the soft press sound before opening");
+                const int heldCues=soundCues.size();
                 std::cout<<"center hold: scale "<<toolsCenter->scale()<<" pressed "<<overlay->findChild<QObject*>("radialCenterTap")->property("pressed").toBool()<<" held "<<overlay->property("centerHeld").toBool()<<" ripple "<<overlay->property("rippleAllowed").toBool()<<" hub "<<hub->isVisible()<<" menu "<<overlay->property("menuOpen").toBool()<<"\n";
                 expect(toolsCenter->scale()>1.075&&overlay->property("bloomProgress").toDouble()==0&&!overlay->property("menuOpen").toBool(),"stylus down expands the center without opening settings");
                 expect(envelope->isVisible()&&overlay->property("ringRippleDistance").toDouble()==0,"held press preserves a bounded visual envelope without moving the outer buttons");
                 wait(1050);capture("press-hold");
                 expect(!overlay->property("menuOpen").toBool(),"a long hold does not fire the release action early");
+                expect(soundCues.size()==heldCues,"holding does not repeat or start the opening sound");
                 penEvent(QEvent::TabletRelease,center);
             }else QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);
             expect(overlay->property("menuOpen").toBool()&&!surface->isEnabled()&&!actions->isEnabled(),"no hidden tool or premature setting can fire during the fill");
+            expect(!soundCues.isEmpty()&&soundCues.last()=="open","radial and dock open sound starts with the fill");
             expect(until([&]{return overlay->property("bloomProgress").toDouble()>.08;}),"bloom advances after the ellipsis");
             QMetaObject::invokeMethod(animation,"pause",Qt::DirectConnection);
             expect(animation->property("duration").toInt()==(docked?360:420),"settings use the faster release timing in both layouts");
@@ -132,6 +139,7 @@ int main(int argc,char**argv){
             }
             QMetaObject::invokeMethod(button,"clicked",Qt::DirectConnection);
             expect(!overlay->property("menuOpen").toBool()&&overlay->property("bloomProgress").toDouble()==1&&!surface->isEnabled()&&!actions->isEnabled(),"Back reverses from the fully open frame with input blocked");
+            expect(soundCues.last()=="close","closing sound accompanies reverse fill");
             expect(until([&]{return overlay->property("bloomProgress").toDouble()<.75;}),"closing bloom moves backward");
             const int closingEarly=bronzePixels(capture("closing-early"));
             expect(until([&]{return overlay->property("bloomProgress").toDouble()<.3;}),"closing bloom keeps contracting");
