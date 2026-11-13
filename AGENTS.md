@@ -1,3 +1,3 @@
-# Release approval
+# Releases
 
-Before posting any further app update, share the exact release notes with Justice and obtain approval from Justice or Bassem. Prepare and validate a concrete candidate first. Hold GitHub publication, asset uploads and update-feed changes until that approval. This user instruction from November 6, 2026 supersedes earlier automatic-publication authorization. Do not infer approval from tests, prior releases or a different version's notes.
+Justice removed the separate release-notes approval requirement on November 12, 2026. When publication is requested, build and verify the update, maintain accurate release notes and the in-app update log, then publish without another notes-approval question. Verify the uploaded assets and the live updater. This supersedes the November 6 notes-approval rule; historical status entries describe the policy at that time.

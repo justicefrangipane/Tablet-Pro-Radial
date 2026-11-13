@@ -1,4 +1,14 @@
-# Local candidate: 0.3.26
+# Release: 0.3.27
+
+Includes all changes since published 0.3.18: in-place floating child menus, a persistent dock during held child menus, animated pen-button mode switching, one-click updates, smoother center dragging, sharper text/icons, aligned docking, live Glass through motion, and the faster held-center/release ripple.
+
+Twelve sound styles are embedded as 36 quiet PCM clips. Crystal whisper remains the default and is first in the settings picker; Watch tick is second. The original five choices are retained, and Linen tick, Cork touch, Cedar knock, Bamboo bead, Watch tick, Porcelain touch and Crystal hush are included from the next audition. Paper key (05), Oiled gear (06) and Dew click (09) are excluded. Selection persists by stable ID, so reordering cannot change an existing user's choice. Sound on/off and Preview remain independent.
+
+All ten Windows suites pass: nine in the full run and the pen timing suite on an isolated rerun. Checks cover every embedded clip, selection order, excluded styles, defaults, persistence, mute/preview, portable documents, native modifiers, pen input, center sound timing, Glass, docking, display density and the installer. Package extraction, startup, upload hashes, GitHub checks and live updater results are recorded in external verification receipts. Physical pen feel and a second computer still need normal user acceptance.
+
+Justice requested publication and removed the separate release-notes approval rule on November 12, 2026. AGENTS.md, release instructions and the publishing script now follow that instruction. Source/archive matching and uploaded-file verification remain required. Older status entries below preserve their historical policy and validation state. No local installation is performed as part of this build-and-publish task.
+
+# Previous local candidate: 0.3.26
 
 Five approved subtle sound styles are embedded: Felt click, Walnut tap, Bamboo ticks, Tiny gears, and Crystal whisper (default). The editor has a Sound style picker and Preview button. Choosing a style saves immediately; the independent Sound on/off preference is preserved. Preview works while muted without changing that preference. Portable test documents include the style, old documents default to Crystal whisper, and invalid styles are rejected before applying a document.
 

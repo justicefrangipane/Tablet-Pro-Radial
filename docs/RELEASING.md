@@ -13,19 +13,19 @@ Official repository: https://github.com/justicefrangipane/Tablet-Pro-Radial
 .\scripts\build-release.ps1 -RuntimeTemplate 'C:\path\to\verified\Tablet-Pro-Radial-0.3.4' -Python 'python'
 ```
 
-The script refuses to overwrite an existing version. It builds and runs all eight Windows CTest suites, deploys Qt, creates the configured installer and source archive, verifies every extracted file, and runs editor/runtime smoke checks with Qt removed from PATH. Output is in `dist/`; screenshots are in `build/windows/release-smoke/`.
+The script refuses to overwrite an existing version. It builds and runs all ten Windows CTest suites, deploys Qt, creates the configured installer and source archive, verifies every extracted file, and runs editor/runtime smoke checks with Qt removed from PATH. Output is in `dist/`; screenshots are in `build/windows/release-smoke/`.
 
 The installer contains the matching source archive and third-party notices. Review the source and contents before publication. Exclude private settings, credentials, local handoff notes, and unrelated files. The HID library is the supplied Tablet Pro binary; its provenance is recorded under `vendor/tabletpro/`.
 
 ## Publish
 
-Before posting any further update, share the exact candidate release notes with Justice and obtain approval from Justice or Bassem (user instruction, November 6, 2026). Finish building and checking the concrete candidate first. Hold GitHub publication, release asset uploads and update-feed changes until that approval. Earlier release authorization does not approve new or changed notes.
+Justice removed the separate release-notes approval requirement on November 12, 2026. A request to publish authorizes building, verifying, uploading and publishing that update without another notes-approval step. Keep accurate notes and the in-app update log, and verify the candidate and uploaded files before making it the latest release.
 
-Install GitHub CLI and sign in to an account with write access to this repository. After approval, commit and push the reviewed source. By default, release notes are generated from the current entry in `docs/update-history.json`, the same data embedded in the app's offline Update log. An optional `-NotesFile` overrides the GitHub text; use a file outside the source tree or commit it before publishing. Record the approved file's SHA-256 and approver. The script refuses any upload without both, or if the notes have changed. These arguments record actual approval; they do not grant it.
+Install GitHub CLI and sign in to an account with write access to this repository. Commit and push the reviewed source. By default, release notes are generated from the current entry in `docs/update-history.json`, the same data embedded in the app's offline Update log. An optional `-NotesFile` overrides the GitHub text; use a file outside the source tree or commit it before publishing. The script still checks the source archive, installer checksum, repository and uploaded asset digests.
 
 ```powershell
 git push origin main
-.\scripts\publish-release.ps1 -NotesFile 'C:\path\to\approved-notes.md' -ApprovedBy Justice -ApprovedNotesSha256 'SHA256_OF_THE_EXACT_APPROVED_FILE'
+.\scripts\publish-release.ps1 -Publish
 ```
 
 This uploads a **draft** release and verifies every asset's uploaded state, byte count, and GitHub SHA-256 digest. To upload, verify, and publish in the same invocation, add `-Publish`. To publish a previously reviewed draft:

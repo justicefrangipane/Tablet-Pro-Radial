@@ -2,6 +2,25 @@
   "app": "Tablet Pro Radial",
   "releases": [
     {
+      "version": "0.3.27",
+      "date": "2026-11-12",
+      "title": "Smoother menus, quiet sounds, and one-click updates",
+      "new": [
+        "Choose from twelve subtle sound styles in the editor. Crystal whisper is the default and appears first; Watch tick is second. The list also includes Felt click, Walnut tap, Bamboo ticks, Tiny gears, Linen tick, Cork touch, Cedar knock, Bamboo bead, Porcelain touch, and Crystal hush.",
+        "Preview each sound without changing Sound on or off. Your chosen style saves automatically and travels with saved test documents."
+      ],
+      "improved": [
+        "Press and hold the floating center to gently expand it. Releasing starts the faster bronze ripple, with coordinated press, opening, and closing sounds. Closing reverses the animation; docked settings use the same sound style.",
+        "Tap or slide out from a floating parent button to open its children in the current ring. In the dock, holding a parent for 300 ms opens its child radial at the pen tip while the rail stays visible; release the parent to close its children.",
+        "Hold the configured pen side button to animate between radial and docked mode. Reduced motion remains available.",
+        "Install update now closes Radial, installs the verified update, and reopens in the same mode. Unapplied editor changes still offer Apply, Discard, or Keep editing."
+      ],
+      "fixed": [
+        "Smoother center dragging, sharper text and icons at different display scales, and docking animations that line up with the finished rail.",
+        "Glass stays visible during pressing, opening and closing settings, dragging, docking, and undocking. The existing Glass and Sound on/off preferences are preserved."
+      ]
+    },
+    {
       "version": "0.3.26",
       "date": "2026-11-12",
       "title": "Quiet sound styles",
@@ -261,7 +280,7 @@
       "new": [
         "The default menu includes labeled Alt, Ctrl, and Shift buttons.",
         "Hold a modifier to activate it. Drag out to keep it held for the current contact, then lift to release. Double-tap to keep it on until the next tap.",
-        "Choose Menu → Edit, then tap a button to open its inspector. Right-click also opens direct editing.",
+        "Choose Menu â†’ Edit, then tap a button to open its inspector. Right-click also opens direct editing.",
         "The radial's outer ring can switch to Dock, Edit, Sound, Glass, Hide, and Quit."
       ],
       "improved": [

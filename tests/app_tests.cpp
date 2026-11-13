@@ -33,7 +33,9 @@ void soundTests(const QString& temporaryPath) {
     StudioController studio(nullptr,temporaryPath+"/sound-config",true);
     check(studio.soundTheme()=="crystal-whisper"&&!studio.soundEnabled(),"Crystal whisper defaults without changing mute");
     auto* audio=studio.findChild<AudioFeedback*>("audioFeedback");
-    check(audio&&audio->findChildren<QSoundEffect*>().size()==15,"all five complete sound sets are embedded");
+    check(audio&&audio->findChildren<QSoundEffect*>().size()==36,"all twelve complete sound sets are embedded");
+    check(soundThemeIds().size()==soundThemeNames().size()&&soundThemeIds().first()==defaultSoundTheme()&&soundThemeIds()[1]=="watch-tick","default style is first and Watch tick is second");
+    for(const auto& excluded:{"paper-key","oiled-gear","dew-click"})check(!soundThemeIds().contains(excluded),"rejected auditions are not offered");
     QElapsedTimer deadline;deadline.start();
     auto ready=[&]{for(auto* effect:audio->findChildren<QSoundEffect*>())if(effect->status()!=QSoundEffect::Ready)return false;return true;};
     while(!ready()&&deadline.elapsed()<4000){QEventLoop loop;QTimer::singleShot(25,&loop,&QEventLoop::quit);loop.exec();}
@@ -45,14 +47,14 @@ void soundTests(const QString& temporaryPath) {
         studio.setSoundTheme(theme);studio.previewSound();
         check(actualTheme==theme&&actualCue=="open"&&wasPreview&&!studio.soundEnabled(),"explicit preview plays selected style while preserving mute");
     }
-    studio.setSoundTheme("unknown");check(studio.soundTheme()=="crystal-whisper","unknown theme cannot erase selected style");
+    studio.setSoundTheme("watch-tick");studio.setSoundTheme("unknown");check(studio.soundTheme()=="watch-tick","unknown theme cannot erase selected style");
     studio.setSoundEnabled(true);
     for(const auto& cue:{"press","open","close"}){studio.playMenuSound(cue);check(actualCue==cue&&!wasPreview,"interaction maps to matching press/open/close clip");}
     studio.playMenuSound("back");check(actualCue=="close","parent Back uses the closing sound");
     studio.setSoundEnabled(false);const int muted=played;studio.playMenuSound("commit");check(played==muted,"Sound off silences all action cues");
     for(auto* effect:audio->findChildren<QSoundEffect*>())check(!effect->isPlaying(),"muting stops a current voice");
-    studio.setSoundTheme("walnut-tap");
-    {StudioController restored(nullptr,temporaryPath+"/sound-config",true);check(restored.soundTheme()=="walnut-tap"&&!restored.soundEnabled(),"restart preserves style independently of mute");}
+    studio.setSoundTheme("watch-tick");
+    {StudioController restored(nullptr,temporaryPath+"/sound-config",true);check(restored.soundTheme()=="watch-tick"&&!restored.soundEnabled(),"restart preserves Watch tick independently of mute");}
     QSettings().setValue("soundTheme","unavailable");
     {StudioController restored(nullptr,temporaryPath+"/sound-config",true);check(restored.soundTheme()=="crystal-whisper","invalid saved style falls back to Crystal whisper");}
     studio.setSoundTheme(defaultSoundTheme());

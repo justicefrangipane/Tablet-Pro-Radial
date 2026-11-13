@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(TabletProRadial VERSION 0.3.26 LANGUAGES CXX)
+project(TabletProRadial VERSION 0.3.27 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -50,7 +50,28 @@ if(TABLETPRO_BUILD_DESKTOP)
     assets/sounds/tiny-gears-close.wav
     assets/sounds/crystal-whisper-press.wav
     assets/sounds/crystal-whisper-open.wav
-    assets/sounds/crystal-whisper-close.wav)
+    assets/sounds/crystal-whisper-close.wav
+    assets/sounds/linen-tick-press.wav
+    assets/sounds/linen-tick-open.wav
+    assets/sounds/linen-tick-close.wav
+    assets/sounds/cork-touch-press.wav
+    assets/sounds/cork-touch-open.wav
+    assets/sounds/cork-touch-close.wav
+    assets/sounds/cedar-knock-press.wav
+    assets/sounds/cedar-knock-open.wav
+    assets/sounds/cedar-knock-close.wav
+    assets/sounds/bamboo-bead-press.wav
+    assets/sounds/bamboo-bead-open.wav
+    assets/sounds/bamboo-bead-close.wav
+    assets/sounds/watch-tick-press.wav
+    assets/sounds/watch-tick-open.wav
+    assets/sounds/watch-tick-close.wav
+    assets/sounds/porcelain-touch-press.wav
+    assets/sounds/porcelain-touch-open.wav
+    assets/sounds/porcelain-touch-close.wav
+    assets/sounds/crystal-hush-press.wav
+    assets/sounds/crystal-hush-open.wav
+    assets/sounds/crystal-hush-close.wav)
   target_link_libraries(radial_studio PUBLIC radial_core Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Multimedia)
   if(WIN32)
     target_link_libraries(radial_studio PRIVATE user32 gdi32 dwmapi hid)
