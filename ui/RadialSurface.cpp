@@ -1,5 +1,6 @@
 #include "RadialSurface.h"
 #include "DockLayout.h"
+#include "RadialGeometry.h"
 #include "core/gesture.h"
 
 #include <QMouseEvent>
@@ -85,14 +86,7 @@ double childPop(double reveal,int slot) {
     return std::min(radial::GestureEngine::ChildVisualOvershoot,1+1.9*q*q*q+.9*q*q);
 }
 QPainterPath wedge(double angle, double span) {
-    QPainterPath path;
-    const auto a0=angle-span/2+.035, a1=angle+span/2-.035;
-    path.moveTo(polar(outerRadius,a0));
-    // Small straight segments keep the texture and hit-test angles identical.
-    for(int j=1;j<=32;j++) path.lineTo(polar(outerRadius,lerp(a0,a1,j/32.0)));
-    path.lineTo(polar(innerRadius,a1));
-    for(int j=1;j<=32;j++) path.lineTo(polar(innerRadius,lerp(a1,a0,j/32.0)));
-    path.closeSubpath(); return path;
+    return tabletpro::radialGeometry::wedge(angle,span);
 }
 
 // Original native geometric icon drawings. No platform font or image asset is

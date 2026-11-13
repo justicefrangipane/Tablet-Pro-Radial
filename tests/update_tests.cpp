@@ -2,6 +2,7 @@
 #include "app/DesktopShell.h"
 #include "app/StudioController.h"
 #include "ui/RadialSurface.h"
+#include "ui/RadialGeometry.h"
 #include <QApplication>
 #include <QDir>
 #include <QEventLoop>
@@ -384,6 +385,36 @@ void displayDensityTests(){
         surface.setDockProgress(0);
     }
 }
+void wedgeClippingTests(){
+    RadialSurface surface;surface.setSize({256,256});surface.setReducedMotion(true);
+    int clipped=0,painted=0;
+    for(const qreal scale:{1.0,1.25,1.5,2.0,3.0})for(const qreal offset:{0.0,.25,.5,.75}){
+        const QPointF center(128+offset,128+offset);
+        QVariantList buttons;
+        QRegion mask(QRectF(center-QPointF(40,40),QSizeF(80,80)).toAlignedRect(),QRegion::Ellipse);
+        for(int i=0;i<6;++i){const double angle=-M_PI/2+i*M_PI/3;
+            buttons.append(QVariantMap{{"id",QString::number(i)},{"slot",i},{"angle",angle},
+                {"cx",center.x()+70*std::cos(angle)},{"cy",center.y()+70*std::sin(angle)}});
+            mask+=tabletpro::radialGeometry::nativeWedge(center,angle);
+        }
+        surface.setButtons(buttons);
+        for(const bool bronze:{false,true}){
+            surface.setBronzeTheme(bronze);
+            QImage image(qCeil(256*scale),qCeil(256*scale),QImage::Format_ARGB32_Premultiplied);
+            image.setDevicePixelRatio(scale);image.fill(Qt::transparent);
+            {QPainter painter(&image);surface.paint(&painter);}
+            // A native region is integer logical geometry before Windows scales
+            // it. Test the actual painted border against that conservative area.
+            for(int y=0;y<image.height();++y)for(int x=0;x<image.width();++x){
+                if(qAlpha(image.pixel(x,y))<16)continue;
+                ++painted;
+                if(!mask.contains(QPoint(qFloor((x+.5)/scale),qFloor((y+.5)/scale))))++clipped;
+            }
+        }
+    }
+    std::cout<<"Wedge mask: "<<clipped<<" clipped of "<<painted<<" painted pixels\n";
+    expect(painted>100000&&clipped==0,"native cutout preserves all six wedge borders at fractional positions and display scales");
+}
 void sideButtonModeUiTests(){
     QTemporaryDir temp;StudioController studio(nullptr,temp.path()+"/profile",true);studio.setReducedMotion(true);
     QQmlApplicationEngine engine;engine.rootContext()->setContextProperty("studio",&studio);engine.rootContext()->setContextProperty("startInEditor",false);
@@ -719,13 +750,13 @@ int main(int argc,char** argv){
     QTemporaryDir settings;QStandardPaths::setTestModeEnabled(true);QSettings::setDefaultFormat(QSettings::IniFormat);QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,settings.path());
     try{
         if(app.arguments().contains("--density-only")){
-            displayDensityTests();
+            displayDensityTests();wedgeClippingTests();
         }else if(app.arguments().contains("--drag-ui-only")){
             qmlRegisterType<RadialSurface>("TabletPro",1,0,"RadialSurface");
             qmlRegisterUncreatableType<MenuSession>("TabletPro",1,0,"MenuSession","Provided");
             qmlRegisterUncreatableType<StylusInput>("TabletPro",1,0,"StylusInput","Provided");
             editorDragUiTests();
-        }else{parseTests();networkTests();trayTests();inPlaceParentUiTests();textureReuseTests();dockLandingTests();displayDensityTests();installHandoffUiTests();editorPenTriggerUiTests();selectionDismissalUiTests();parentPointerUiTests();sideButtonModeUiTests();editorDragUiTests();whatsNewTests();}
+        }else{parseTests();networkTests();trayTests();inPlaceParentUiTests();textureReuseTests();dockLandingTests();displayDensityTests();wedgeClippingTests();installHandoffUiTests();editorPenTriggerUiTests();selectionDismissalUiTests();parentPointerUiTests();sideButtonModeUiTests();editorDragUiTests();whatsNewTests();}
         std::cout<<checks<<" tray/update checks passed\n";return 0;
     }catch(const std::exception& e){std::cerr<<"FAILED: "<<e.what()<<'\n';return 1;}
 }

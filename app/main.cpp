@@ -14,6 +14,7 @@
 #include <QStandardPaths>
 #include <QTimer>
 #include <QRegion>
+#include "ui/RadialGeometry.h"
 #include <QDir>
 #include <QDebug>
 #include <QJsonDocument>
@@ -138,7 +139,7 @@ int main(int argc,char**argv) {
             if(!recovery.pending())backdrop.setEnabled(studio.backdropEnabled());
             return;
         }
-        QRegion region;
+        QRegion region,artworkCoverage;
         for(const auto* name:{"overlayRail","overlayToolbar","overlayMorePanel","overlayResult"}) {
             if(studio.runtime()->parentMenuOpen() && !studio.runtime()->docked() && name!=QString("overlayResult"))continue;
             const auto* item=overlay->findChild<QQuickItem*>(name);
@@ -157,7 +158,11 @@ int main(int argc,char**argv) {
         if(session->transitioning()&&surface)region+=surface->motionGlassRegion(p);
         else if(p<=0 && !session->parentMenuOpen()){
             const auto center=session->radialCenter();
-            for(const auto& value:settingsSurface&&settingsSurface->isVisible()?settingsSurface->buttons():session->buttons())region+=sector(center,value.toMap()["angle"].toDouble(),41,101,3.141592653589793/6-.02);
+            for(const auto& value:settingsSurface&&settingsSurface->isVisible()?settingsSurface->buttons():session->buttons()){
+                const auto angle=value.toMap()["angle"].toDouble();
+                region+=sector(center,angle,41,101,3.141592653589793/6-.02);
+                if(!session->dragging())artworkCoverage+=tabletpro::radialGeometry::nativeWedge(center,angle);
+            }
         }
         else if((!session->parentMenuOpen() || session->docked()) && (!surface||!surface->continuousRail()))for(const auto& value:session->buttons()){
             const auto b=value.toMap();QPainterPath path;
@@ -172,11 +177,17 @@ int main(int argc,char**argv) {
         if(session->parentMenuOpen()){
             const auto center=session->parentCenter();QPainterPath hub;hub.addEllipse(center,40,40);
             region+=QRegion(hub.toFillPolygon().toPolygon());
-            for(const auto& value:session->parentButtons())region+=sector(center,value.toMap()["angle"].toDouble(),41,101,3.141592653589793/6-.02);
+            for(const auto& value:session->parentButtons()){
+                const auto angle=value.toMap()["angle"].toDouble();
+                region+=sector(center,angle,41,101,3.141592653589793/6-.02);
+                if(!session->dragging()&&!session->transitioning())artworkCoverage+=tabletpro::radialGeometry::nativeWedge(center,angle);
+            }
         }
         const qreal diffusion=session->parentMenuOpen()?50.5:50.5+(11-50.5)*p;
         backdrop.setVisualRegion(region,diffusion);
-        const QRegion input=session->dragging()||session->transitioning()?QRegion(QRect(QPoint(),overlay->size())):region;
+        // Keep the existing Glass contour. Only the native cutout needs room
+        // for painted edge pixels; gestures still use the actual wedge bounds.
+        const QRegion input=session->dragging()||session->transitioning()?QRegion(QRect(QPoint(),overlay->size())):region.united(artworkCoverage);
         if(input!=overlay->mask())overlay->setMask(input);
         if(!recovery.pending())backdrop.setEnabled(studio.backdropEnabled());
     };

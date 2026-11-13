@@ -1,3 +1,9 @@
+# Local candidate: 0.3.28
+
+The native window cutout now includes the exact painted wedge path plus a small guard for border antialiasing, texture filtering and integer-region rounding. The previous angular padding narrowed near the center and clipped wedge edges at fractional positions. Root buttons, in-place child rings and bronze settings share the correction. The artwork, gesture boundaries, Glass contour, diffusion and ripple are unchanged; dragging still uses its stable full capture region without rebuilding these extra cutouts.
+
+All ten Windows suites pass (57.95 seconds). The new regression checks both themes at 100%, 125%, 150%, 200% and 300% scaling and four fractional positions: zero clipped pixels among 3,186,078 painted pixels. Existing native animation, docking, Glass, pen, modifier and installer checks pass. Package and installation verification are recorded outside the source archive. This is a local fix, not a published GitHub release.
+
 # Release: 0.3.27
 
 Includes all changes since published 0.3.18: in-place floating child menus, a persistent dock during held child menus, animated pen-button mode switching, one-click updates, smoother center dragging, sharper text/icons, aligned docking, live Glass through motion, and the faster held-center/release ripple.

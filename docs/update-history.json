@@ -2,6 +2,14 @@
   "app": "Tablet Pro Radial",
   "releases": [
     {
+      "version": "0.3.28",
+      "date": "2026-11-13",
+      "title": "Clean radial button edges",
+      "fixed": [
+        "Fixed clipped borders and inner corners on radial buttons, including child menus and bronze settings, at different display scales and positions. Button sizes, spacing, Glass, and the center ripple stay the same."
+      ]
+    },
+    {
       "version": "0.3.27",
       "date": "2026-11-12",
       "title": "Smoother menus, quiet sounds, and one-click updates",
