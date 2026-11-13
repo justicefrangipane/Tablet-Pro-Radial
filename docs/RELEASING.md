@@ -36,6 +36,12 @@ gh release edit v0.3.10 --repo justicefrangipane/Tablet-Pro-Radial --draft=false
 
 Replace the example tag with the version just built. Never use fake newer releases to test the production feed. The updater requires a public stable `vMAJOR.MINOR.PATCH` release and the exact installer name `Tablet-Pro-Radial-MAJOR.MINOR.PATCH-Windows-x64-Setup.exe`.
 
+## Close a local installation from the command line
+
+For an authorized local update, `powershell -NoProfile -File scripts\close-radial.ps1` closes the running installed Radial without a manual Quit step. It supports older versions that have no built-in `--quit` argument. Pass `-ProcessId ID` when more than one instance exists, or `-WhatIf` to inspect the target without closing it.
+
+The helper validates the executable under the current user's Radial installation, registers only that PID and its creation time with Windows Restart Manager, and checks the affected-process list before requesting a non-forced shutdown. It waits for the app and its pen listeners to exit. If shutdown is refused or incomplete, it stops rather than terminating the app forcibly. Run the installer only after successful exit; the published installer and release assets remain unchanged.
+
 ## Verify the live feed
 
 ```powershell
