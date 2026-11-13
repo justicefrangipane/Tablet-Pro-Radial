@@ -15,6 +15,7 @@ struct RadialSettings {
     int durationMs = 1640;
     bool backdropEnabled = true;
     QString soundTheme = defaultSoundTheme();
+    double glassStrength = .60;
     bool operator==(const RadialSettings&) const = default;
 };
 struct DecodedRadialDocument {

@@ -33,7 +33,7 @@ void soundTests(const QString& temporaryPath) {
     StudioController studio(nullptr,temporaryPath+"/sound-config",true);
     check(studio.soundTheme()=="crystal-whisper"&&!studio.soundEnabled(),"Crystal whisper defaults without changing mute");
     auto* audio=studio.findChild<AudioFeedback*>("audioFeedback");
-    check(audio&&audio->findChildren<QSoundEffect*>().size()==36,"all twelve complete sound sets are embedded");
+    check(audio&&audio->findChildren<QSoundEffect*>().size()==48,"all twelve complete sound sets include a dedicated modifier lock");
     check(soundThemeIds().size()==soundThemeNames().size()&&soundThemeIds().first()==defaultSoundTheme()&&soundThemeIds()[1]=="watch-tick","default style is first and Watch tick is second");
     for(const auto& excluded:{"paper-key","oiled-gear","dew-click"})check(!soundThemeIds().contains(excluded),"rejected auditions are not offered");
     QElapsedTimer deadline;deadline.start();
@@ -46,18 +46,56 @@ void soundTests(const QString& temporaryPath) {
     for(const auto& theme:soundThemeIds()){
         studio.setSoundTheme(theme);studio.previewSound();
         check(actualTheme==theme&&actualCue=="open"&&wasPreview&&!studio.soundEnabled(),"explicit preview plays selected style while preserving mute");
+        studio.previewSound("modifier-lock");
+        check(actualTheme==theme&&actualCue=="modifier-lock"&&wasPreview&&!studio.soundEnabled(),"lock preview uses the selected theme without holding a key or unmuting");
+    }
+    studio.setSoundEnabled(true);
+    auto* session=studio.preview();session->setProfile(radial::defaultProfile());session->setViewport(720,600);session->setReducedMotion(true);
+    for(const auto& theme:soundThemeIds())for(bool docked:{false,true}){
+        studio.setSoundTheme(theme);if(session->docked()!=docked)session->toggleDock();
+        for(const auto& key:{"Alt","Ctrl","Shift"}){
+            QVariantMap b;for(const auto& v:session->buttons())if(v.toMap()["id"]==QString("modifier.")+key)b=v.toMap();
+            const auto x=b[docked?"dockX":"cx"].toDouble(),y=b[docked?"dockY":"cy"].toDouble();const int before=played;
+            session->pointerPressed(92,x,y);session->pointerMoved(93,x+90,y);session->pointerMoved(92,x+12,y);
+            check(played==before,"press, short movement and another pointer do not claim a lock");
+            session->pointerMoved(92,x+90,y);
+            check(played==before+1&&actualTheme==theme&&actualCue=="modifier-lock"&&!wasPreview,"successful outward lock plays exactly one matching cue");
+            session->pointerMoved(92,x+110,y);session->pointerReleased(92,x+110,y);session->finishNextStroke();
+            check(played==before+1&&session->heldModifiers().contains(key),"lock survives contact lift without a repeated sound");
+            session->finishPenHover();check(session->heldModifiers().isEmpty()&&played==before+1,"hover exit releases the key without replaying lock");
+            session->cancel();
+        }
     }
     studio.setSoundTheme("watch-tick");studio.setSoundTheme("unknown");check(studio.soundTheme()=="watch-tick","unknown theme cannot erase selected style");
     studio.setSoundEnabled(true);
-    for(const auto& cue:{"press","open","close"}){studio.playMenuSound(cue);check(actualCue==cue&&!wasPreview,"interaction maps to matching press/open/close clip");}
+    for(const auto& cue:{"press","open","close","modifier-lock"}){studio.playMenuSound(cue);check(actualCue==cue&&!wasPreview,"interaction maps to its dedicated clip");}
     studio.playMenuSound("back");check(actualCue=="close","parent Back uses the closing sound");
-    studio.setSoundEnabled(false);const int muted=played;studio.playMenuSound("commit");check(played==muted,"Sound off silences all action cues");
+    studio.setSoundEnabled(false);const int muted=played;studio.playMenuSound("commit");studio.playMenuSound("modifier-lock");check(played==muted,"Sound off silences all action cues");
     for(auto* effect:audio->findChildren<QSoundEffect*>())check(!effect->isPlaying(),"muting stops a current voice");
     studio.setSoundTheme("watch-tick");
     {StudioController restored(nullptr,temporaryPath+"/sound-config",true);check(restored.soundTheme()=="watch-tick"&&!restored.soundEnabled(),"restart preserves Watch tick independently of mute");}
     QSettings().setValue("soundTheme","unavailable");
     {StudioController restored(nullptr,temporaryPath+"/sound-config",true);check(restored.soundTheme()=="crystal-whisper","invalid saved style falls back to Crystal whisper");}
     studio.setSoundTheme(defaultSoundTheme());
+}
+void glassSettingsTests(const QString& path){
+    StudioController studio(nullptr,path+"/glass-config",true);
+    check(studio.glassStrength()==.60,"Glass starts at a gentler 60 percent");
+    studio.setGlassStrength(.27);studio.setBackdropEnabled(false);
+    {StudioController restored(nullptr,path+"/glass-config",true);check(restored.glassStrength()==.27&&!restored.backdropEnabled(),"strength persists independently of the Glass toggle");}
+    RadialSettings preferences;preferences.glassStrength=.27;
+    const auto encoded=encodeTestDocument(radial::defaultProfile(),preferences);
+    const auto parsed=decodeRadialDocument(encoded);check(parsed.settings&&parsed.settings->glassStrength==.27,"portable document keeps Glass strength");
+    auto document=QJsonDocument::fromJson(encoded).object();auto settings=document["settings"].toObject();settings.remove("glassStrength");document["settings"]=settings;
+    const auto older=decodeRadialDocument(QJsonDocument(document).toJson());check(older.settings&&older.settings->glassStrength==.60,"older documents use the gentle default");
+    for(const QJsonValue invalid:{QJsonValue(-.1),QJsonValue(1.1),QJsonValue("full"),QJsonValue(true)}){
+        settings["glassStrength"]=invalid;document["settings"]=settings;
+        check(!decodeRadialDocument(QJsonDocument(document).toJson()).profile,"invalid imported Glass strength is rejected before applying");
+    }
+    studio.setGlassStrength(0);check(studio.glassStrength()==0,"zero strength is supported");
+    studio.setGlassStrength(1);check(studio.glassStrength()==1,"full original strength is supported");
+    studio.setGlassStrength(std::numeric_limits<double>::quiet_NaN());check(studio.glassStrength()==1,"nonfinite strength does not poison settings");
+    studio.setGlassStrength(.60);studio.setBackdropEnabled(true);
 }
 QVariantMap button(const MenuSession& session, const QString& id, bool child = false) {
     for (const auto& item : child ? (session.parentMenuOpen() ? session.parentButtons() : session.childButtons()) : session.buttons()) {
@@ -603,6 +641,14 @@ void modifierTests(const QString& directory) {
     auto invalid=profile;invalid.nodes.at("modifier.Alt").action.key="Meta";
     check(!radial::validate(invalid).empty(),"unsupported held key rejected");
     MenuSession session(true,nullptr);session.setProfile(profile);session.setReducedMotion(true);session.toggleDock();
+    {
+        MenuSession unavailable(false,nullptr);unavailable.setProfile(profile);
+        int locks=0;QObject::connect(&unavailable,&MenuSession::cue,[&](const QString& cue){if(cue=="modifier-lock")++locks;});
+        const auto b=button(unavailable,"modifier.Alt");const auto px=b["cx"].toDouble(),py=b["cy"].toDouble();
+        unavailable.pointerPressed(71,px,py);unavailable.pointerMoved(71,px+90,py);
+        check(locks==0&&unavailable.heldModifiers().isEmpty(),"a failed native hover lock cannot play a success cue");
+        unavailable.cancel();
+    }
     const auto alt=button(session,"modifier.Alt");const double x=alt["dockX"].toDouble(),y=alt["dockY"].toDouble();
     const auto press=[&]{session.pointerPressed(11,x,y);};
     const auto lift=[&]{session.pointerReleased(11,x,y);};
@@ -718,7 +764,7 @@ int main(int argc, char** argv) {
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, temporary.path() + "/settings");
     int result = EXIT_SUCCESS;
     try {
-        soundTests(temporary.path());modeTransitionTests();
+        soundTests(temporary.path());glassSettingsTests(temporary.path());modeTransitionTests();
         inPlaceParentTests();
         parentMenuTests(temporary.path()); reparentTests(temporary.path()); modifierTests(temporary.path()); codecTests(); testDocumentCodecTests(); controllerTests(temporary.path()); testDocumentControllerTests(temporary.path()); sessionTests(); invocationGeometryTests(); compactDockFanTests(); queuedSessionTests();
         std::cout << "PASS: " << checks << " application integration checks\n";

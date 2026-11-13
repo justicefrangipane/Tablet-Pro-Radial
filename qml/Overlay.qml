@@ -12,9 +12,21 @@ Window {
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     signal quitRequested()
     property bool menuOpen: false
+    property bool glassAdjustmentOpen: false
+    property point glassAnchor: Qt.point(0,0)
+    property bool glassAnchorDocked: false
+    function showGlassAdjustment(anchor, docked) {
+        glassAnchor=anchor;glassAnchorDocked=docked;glassAdjustmentOpen=true
+        if(!studio.backdropEnabled)studio.backdropEnabled=true
+    }
+    function adjustGlassDrag(point) {
+        const local=glassSlider.mapFromItem(overlay.contentItem,point.x,point.y)
+        if(local.y>=-18 && local.y<=glassSlider.height+18)
+            studio.glassStrength=Math.max(0,Math.min(1,(local.x-glassSlider.leftPadding)/(glassSlider.availableWidth)))
+    }
     property bool selectionDismissal: false
     readonly property bool morphing: studio.runtime.transitioning
-    onMorphingChanged: { if(morphing){menuOpen=false;settingsBloomAnimation.stop();bloomProgress=0;} }
+    onMorphingChanged: { if(morphing){glassAdjustmentOpen=false;menuOpen=false;settingsBloomAnimation.stop();bloomProgress=0;} }
     readonly property bool childrenVisible: surface.visualBounds.width > 0 || studio.runtime.parentMenuOpen
     property string resultMessage: ""
     readonly property bool railMode: studio.runtime.docked && !morphing
@@ -46,6 +58,7 @@ Window {
         })
     }
     onMenuOpenChanged: {
+        glassAdjustmentOpen=false
         if(visible&&!morphing)studio.playMenuSound(menuOpen ? "open" : "close")
         resultMessage=""
         const current=bloomProgress
@@ -73,6 +86,7 @@ Window {
     property bool editingButtons: false
     property string editPressedId: ""
     function activateOption(key) {
+        glassAdjustmentOpen=false
         if(key==="sound"){studio.soundEnabled=!studio.soundEnabled;return;}
         if(key==="glass"){studio.backdropEnabled=!studio.backdropEnabled;return;}
         menuOpen=false
@@ -92,12 +106,13 @@ Window {
         })
     }
     onVisibleChanged: {
+        glassAdjustmentOpen=false
         menuOpen = false; editingButtons=false; resultMessage = "";
         settingsBloomAnimation.stop();bloomProgress=0;
         if (visible) studio.runtime.setViewport(surface.width,surface.height);
         else if(!selectionDismissal)studio.runtime.cancel();
     }
-    Shortcut { sequence: "Escape"; enabled: overlay.visible; onActivated: { overlay.menuOpen=false;overlay.editingButtons=false; studio.runtime.cancel(); } }
+    Shortcut { sequence: "Escape"; enabled: overlay.visible; onActivated: { if(overlay.glassAdjustmentOpen){overlay.glassAdjustmentOpen=false;return;} overlay.menuOpen=false;overlay.editingButtons=false; studio.runtime.cancel(); } }
     Connections {
         target: studio.runtime
         function onActionReported(description) { overlay.resultMessage=description; resultTimer.restart(); }
@@ -219,10 +234,42 @@ Window {
             glassEnabled: studio.backdropEnabled
             reducedMotion: studio.reducedMotion
             property string pressedId: ""
-            onPressed: (pointerId,x,y) => { pressedId=hitRoot(x,y);selectedId=pressedId; }
+            onPressed: (pointerId,x,y) => { const id=hitRoot(x,y);pressedId=id==="glass"?"":id;selectedId=pressedId; }
             onMoved: (pointerId,x,y) => { selectedId=hitRoot(x,y)===pressedId?pressedId:""; }
             onReleased: (pointerId,x,y) => { const id=hitRoot(x,y);selectedId="";if(id.length&&id===pressedId)overlay.activateOption(id);pressedId=""; }
             onCanceled: {selectedId="";pressedId="";}
+        }
+        Item {
+            id: radialGlassControl
+            anchors.fill: parent
+            enabled: overlay.settingsReady && !overlay.railMode
+            containmentMask: QtObject {
+                function contains(point: point): bool { return settingsSurface.hitRoot(point.x,point.y)==="glass"; }
+            }
+            TapHandler {
+                enabled: overlay.settingsReady && !overlay.railMode && !radialGlassPull.active
+                gesturePolicy: TapHandler.ReleaseWithinBounds
+                acceptedButtons: Qt.LeftButton
+                onPressedChanged: if(pressed){radialGlassPull.used=false;settingsSurface.selectedId="glass";}else settingsSurface.selectedId=""
+                onTapped: overlay.activateOption("glass")
+            }
+            DragHandler {
+                id: radialGlassPull
+                objectName: "radialGlassPull"
+                enabled: overlay.settingsReady && !overlay.railMode
+                property bool used: false
+                target: null;dragThreshold: 18
+                acceptedButtons: Qt.LeftButton
+                function updatePull() {
+                    if(active && activeTranslation.y>18 && centroid.position.y>210 && !used){
+                        used=true
+                        overlay.showGlassAdjustment(radialGlassControl.mapToItem(overlay.contentItem,108,178),false)
+                    }
+                    if(active && used)overlay.adjustGlassDrag(radialGlassControl.mapToItem(overlay.contentItem,centroid.position.x,centroid.position.y))
+                }
+                onActiveChanged: {updatePull();if(!active)settingsSurface.selectedId="";}
+                onTranslationChanged: updatePull()
+            }
         }
         Rectangle {
             objectName: "radialSettingsCenter"
@@ -326,12 +373,13 @@ Window {
                     { key: "quit", label: "Quit Radial Studio" }
                 ]
                 HubButton {
+                    id: railAction
                     required property int index
                     required property var modelData
                     objectName: "railAction_"+modelData.key
                     x: 0; y: index*51; width: 44; height: 44
                     glyph: modelData.key
-                    hint: modelData.label + (modelData.key==="sound" ? (studio.soundEnabled ? " (on)" : " (off)") : modelData.key==="glass" ? (studio.backdropEnabled ? " (on)" : " (off)") : "")
+                    hint: modelData.label + (modelData.key==="sound" ? (studio.soundEnabled ? " (on)" : " (off)") : modelData.key==="glass" ? " · tap on/off · drag out for strength" : "")
                     railStyle: true
                     iconColor: overlay.settingsInk
                     activeIconColor: overlay.settingsActiveInk
@@ -341,7 +389,32 @@ Window {
                     reduceMotion: studio.reducedMotion
                     dimWhenDisabled: false
                     highlighted: modelData.key==="sound" ? studio.soundEnabled : modelData.key==="glass" ? studio.backdropEnabled : false
-                    onClicked: overlay.activateOption(modelData.key)
+                    onPressedChanged: if(pressed)glassPull.used=false
+                    onClicked: if(!glassPull.used)overlay.activateOption(modelData.key)
+                    TapHandler {
+                        enabled: modelData.key==="glass" && overlay.settingsReady && overlay.railMode && !glassPull.active
+                        gesturePolicy: TapHandler.ReleaseWithinBounds
+                        acceptedButtons: Qt.LeftButton
+                        onPressedChanged: if(pressed)glassPull.used=false
+                        onTapped: railAction.clicked()
+                    }
+                    DragHandler {
+                        id: glassPull
+                        objectName: modelData.key==="glass"?"railGlassPull":""
+                        enabled: modelData.key==="glass" && overlay.settingsReady && overlay.railMode
+                        property bool used: false
+                        target: null;dragThreshold: 18
+                        acceptedButtons: Qt.LeftButton
+                        function updatePull() {
+                            if(active && activeTranslation.x>18 && !used){
+                                used=true
+                                overlay.showGlassAdjustment(railAction.mapToItem(overlay.contentItem,22,22),true)
+                            }
+                            if(active && used)overlay.adjustGlassDrag(railAction.mapToItem(overlay.contentItem,centroid.position.x,centroid.position.y))
+                        }
+                        onActiveChanged: updatePull()
+                        onTranslationChanged: updatePull()
+                    }
                 }
             }
         }
@@ -362,6 +435,46 @@ Window {
         dimWhenDisabled: false
         onPressedChanged: if(pressed&&!overlay.editingButtons)studio.playMenuSound("press")
         onClicked: {if(overlay.editingButtons)overlay.editingButtons=false;else overlay.menuOpen=!overlay.menuOpen;}
+    }
+    Rectangle {
+        id: glassPanel
+        objectName: "glassStrengthPanel"
+        z: 30
+        visible: overlay.glassAdjustmentOpen && overlay.settingsReady
+        width: 220;height: 86;radius: 12
+        x: Math.max(8,Math.min(overlay.width-width-8,overlay.glassAnchorDocked?overlay.glassAnchor.x+30:overlay.glassAnchor.x-width/2))
+        y: Math.max(8,Math.min(overlay.height-height-8,overlay.glassAnchorDocked?overlay.glassAnchor.y-43:overlay.glassAnchor.y+38))
+        color: "#392a22";border.width: 1;border.color: "#ad8055"
+        Text { x: 14;y: 12;text: "Glass strength";color: overlay.settingsInk;font.pixelSize: 12 }
+        Text { x: 143;y: 12;text: Math.round(studio.glassStrength*100)+"%";color: overlay.settingsInk;font.pixelSize: 12 }
+        Button {
+            objectName: "closeGlassStrength"
+            x: 188;y: 4;width: 28;height: 28;text: "×"
+            Accessible.name: "Close Glass strength"
+            background: Rectangle { radius: 6;color: parent.down?"#89613d":parent.hovered?"#6a4c34":"transparent" }
+            contentItem: Text { text: parent.text;color: overlay.settingsInk;horizontalAlignment: Text.AlignHCenter;verticalAlignment: Text.AlignVCenter;font.pixelSize: 18 }
+            onClicked: overlay.glassAdjustmentOpen=false
+        }
+        Slider {
+            id: glassSlider
+            objectName: "glassStrengthSlider"
+            x: 14;y: 36;width: 192;height: 36
+            from: 0;to: 100;stepSize: 1
+            value: Math.round(studio.glassStrength*100)
+            Accessible.name: "Glass strength"
+            onMoved: studio.glassStrength=value/100
+            background: Rectangle {
+                x: glassSlider.leftPadding;y: glassSlider.topPadding+glassSlider.availableHeight/2-height/2
+                width: glassSlider.availableWidth;height: 4;radius: 2;color: "#70503b"
+                Rectangle { width: glassSlider.visualPosition*parent.width;height: parent.height;radius: 2;color: "#dfb784" }
+            }
+            handle: Rectangle {
+                x: glassSlider.leftPadding+glassSlider.visualPosition*(glassSlider.availableWidth-width)
+                y: glassSlider.topPadding+glassSlider.availableHeight/2-height/2
+                width: 18;height: 18;radius: 9;color: glassSlider.pressed?"#fff0d7":"#ffe5bd"
+                border.width: 1;border.color: "#ad8055"
+            }
+        }
     }
     ParentMenu {
         objectName: "parentMenu"

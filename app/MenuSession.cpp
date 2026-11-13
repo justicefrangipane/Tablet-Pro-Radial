@@ -356,9 +356,11 @@ void MenuSession::moveModifierPointer(int pointerId,qreal x,qreal y){
 }
 bool MenuSession::armHoverModifier(){
     if(!simulation_ && (!platform_ || !platform_->armUntilPenLeaves(modifierKey_))){holdModifier(modifierKey_,false);return false;}
-    if(!hoverModifiers_.contains(modifierKey_))hoverModifiers_.append(modifierKey_);
+    const bool newlyLocked=!hoverModifiers_.contains(modifierKey_);
+    if(newlyLocked)hoverModifiers_.append(modifierKey_);
     armedModifiers_.removeAll(modifierKey_);
     status_=modifierKey_+" stays on until the pen leaves hover range";
+    if(newlyLocked)emit cue("modifier-lock");
     return true;
 }
 void MenuSession::releaseModifiers() {

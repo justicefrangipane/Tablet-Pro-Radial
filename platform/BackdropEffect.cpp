@@ -8,6 +8,7 @@
 #include <QLibrary>
 #include <QCoreApplication>
 #include <vector>
+#include <cmath>
 
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
@@ -32,16 +33,18 @@ struct CompositionApi {
     using Create=void*(__cdecl*)(HWND,const RECT*,unsigned,int,int,float,HRESULT*);
     using Update=HRESULT(__cdecl*)(void*,const RECT*,unsigned,int,int,float);
     using Destroy=void(__cdecl*)(void*);
-    Create create=nullptr;Update update=nullptr;Destroy destroy=nullptr;
+    using Strength=HRESULT(__cdecl*)(void*,float);
+    Create create=nullptr;Update update=nullptr;Destroy destroy=nullptr;Strength strength=nullptr;
     CompositionApi(){
         library.setLoadHints(QLibrary::PreventUnloadHint);
         if(library.load()){
             create=reinterpret_cast<Create>(library.resolve("TPGlass_CreateV2"));
             update=reinterpret_cast<Update>(library.resolve("TPGlass_UpdateV2"));
             destroy=reinterpret_cast<Destroy>(library.resolve("TPGlass_Destroy"));
+            strength=reinterpret_cast<Strength>(library.resolve("TPGlass_SetStrength"));
         }
     }
-    bool ready()const{return create&&update&&destroy;}
+    bool ready()const{return create&&update&&destroy&&strength;}
 };
 CompositionApi& compositionApi(){static CompositionApi api;return api;}
 
@@ -153,6 +156,13 @@ void BackdropEffect::setDiffusion(qreal distance)
 void BackdropEffect::setVisualRegion(const QRegion& region)
 {
     setVisualRegion(region,m_diffusion);
+}
+void BackdropEffect::setStrength(qreal strength)
+{
+    if(!std::isfinite(strength))return;
+    const auto next=qBound(qreal(0),strength,qreal(1));
+    if(qFuzzyCompare(next+1,m_strength+1))return;
+    m_strength=next;refresh();
 }
 void BackdropEffect::setVisualRegion(const QRegion& region,qreal diffusion)
 {
@@ -272,6 +282,7 @@ void BackdropEffect::refresh()
             return;
         }
     }
+    if(FAILED(api.strength(m_composition,float(m_strength)))){clear();return;}
     // hWndInsertAfter puts the glass immediately BELOW the drawing/input HWND.
     // Neither showing nor repositioning the material may steal drawing focus.
     if (!SetWindowPos(glass, overlay, geometry.x(), geometry.y(), geometry.width(), geometry.height(),

@@ -154,3 +154,8 @@ extern "C" __declspec(dllexport) void __cdecl TPGlass_Destroy(void* handle) noex
     if(!handle)return;std::unique_ptr<Surface> surface(static_cast<Surface*>(handle));
     try{surface->target.Root(nullptr);surface->target.Close();surface->visual.Close();surface->mask.Close();surface->graphics.Close();surface->compositor.Close();}catch(...){}
 }
+extern "C" __declspec(dllexport) HRESULT __cdecl TPGlass_SetStrength(void* handle,float strength) noexcept {
+    try{if(!handle||!(strength>=0&&strength<=1))return E_INVALIDARG;
+        static_cast<Surface*>(handle)->visual.Opacity(strength);return S_OK;
+    }catch(...){return to_hresult();}
+}

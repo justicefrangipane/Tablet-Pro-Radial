@@ -106,7 +106,7 @@ QByteArray encodeTestDocument(const radial::Profile& profile, const RadialSettin
         {"profile", QJsonDocument::fromJson(encodeProfile(profile)).object()},
         {"settings", QJsonObject{{"soundEnabled", settings.soundEnabled},
             {"reducedMotion", settings.reducedMotion}, {"durationMs", settings.durationMs},
-            {"backdropEnabled", settings.backdropEnabled}, {"soundTheme", settings.soundTheme}}}};
+            {"backdropEnabled", settings.backdropEnabled}, {"soundTheme", settings.soundTheme}, {"glassStrength", settings.glassStrength}}}};
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
 
@@ -134,7 +134,7 @@ DecodedRadialDocument decodeRadialDocument(const QByteArray& bytes) {
     if (root.contains("settings")) {
         if (!root["settings"].isObject()) return fail("Test document settings must be an object.");
         const auto values = root["settings"].toObject();
-        const QStringList fields{"soundEnabled", "reducedMotion", "durationMs", "backdropEnabled", "soundTheme"};
+        const QStringList fields{"soundEnabled", "reducedMotion", "durationMs", "backdropEnabled", "soundTheme", "glassStrength"};
         for (const auto& key : values.keys())
             if (!fields.contains(key)) return fail("Unknown radial setting: " + key);
         for (const auto& key : {"soundEnabled", "reducedMotion", "backdropEnabled"})
@@ -145,8 +145,11 @@ DecodedRadialDocument decodeRadialDocument(const QByteArray& bytes) {
             return fail("Setting durationMs must be an integer from 250 to 2400.");
         const auto theme=values.contains("soundTheme") ? values["soundTheme"].toString() : defaultSoundTheme();
         if(!soundThemeIds().contains(theme))return fail("Unknown sound style.");
+        const auto strength=values.contains("glassStrength")?values["glassStrength"]:QJsonValue(.60);
+        if(!strength.isDouble()||!std::isfinite(strength.toDouble())||strength.toDouble()<0||strength.toDouble()>1)
+            return fail("Glass strength must be a number from 0 to 1.");
         settings = RadialSettings{values["soundEnabled"].toBool(), values["reducedMotion"].toBool(),
-            duration.toInt(), values["backdropEnabled"].toBool(), theme};
+            duration.toInt(), values["backdropEnabled"].toBool(), theme, strength.toDouble()};
     }
     return {std::move(profile.profile), settings, {}};
 }

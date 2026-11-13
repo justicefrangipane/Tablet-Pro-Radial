@@ -27,6 +27,8 @@ public:
     void clearVisualRegion();
     // Logical pixels outside the body; this never enlarges the input mask.
     void setDiffusion(qreal distance);
+    void setStrength(qreal strength);
+    qreal strength() const { return m_strength; }
     bool enabled() const { return m_enabled; }
 
     // DWM accepted the request; this is not proof of the displayed appearance.
@@ -52,6 +54,7 @@ private:
     quint64 m_shapeBuildCount = 0;
     QRect m_nativeGeometry;
     qreal m_diffusion = 0;
+    qreal m_strength = 1;
     qreal m_nativeDiffusion = -1;
     bool m_refreshing = false;
     bool m_enabled = true;

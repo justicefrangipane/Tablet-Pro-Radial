@@ -828,6 +828,8 @@ ApplicationWindow {
                         StudioCombo {
                             objectName: "soundStylePicker"
                             Layout.fillWidth: true
+                            Layout.minimumWidth: 90
+                            Layout.preferredWidth: 140
                             model: studio.soundThemeNames
                             currentIndex: studio.soundThemeIds.indexOf(studio.soundTheme)
                             Accessible.name: "Sound style"
@@ -838,6 +840,12 @@ ApplicationWindow {
                             text: "Preview"
                             hint: "Hear this sound without changing Sound on or off"
                             onClicked: studio.previewSound()
+                        }
+                        StudioButton {
+                            objectName: "previewModifierLockButton"
+                            text: "Preview lock"
+                            hint: "Hear the modifier pull-to-lock sound"
+                            onClicked: studio.previewSound("modifier-lock")
                         }
                     }
                 }

@@ -130,6 +130,7 @@ int main(int argc,char**argv) {
     };
     auto updateMask=[&] {
         const auto* session=studio.runtime();
+        backdrop.setStrength(studio.glassStrength());
         if(!session->transitioning()&&!session->dragging()&&rippleEnvelope&&rippleEnvelope->isVisible()){
             // One cached local Glass contour contains both the held press and
             // released ripple. The input envelope is independent of Glass.
@@ -140,7 +141,7 @@ int main(int argc,char**argv) {
             return;
         }
         QRegion region,artworkCoverage;
-        for(const auto* name:{"overlayRail","overlayToolbar","overlayMorePanel","overlayResult"}) {
+        for(const auto* name:{"overlayRail","overlayToolbar","overlayMorePanel","overlayResult","glassStrengthPanel"}) {
             if(studio.runtime()->parentMenuOpen() && !studio.runtime()->docked() && name!=QString("overlayResult"))continue;
             const auto* item=overlay->findChild<QQuickItem*>(name);
             if(!item||!item->isVisible()||item->opacity()<.01)continue;
@@ -198,7 +199,7 @@ int main(int argc,char**argv) {
     QObject::connect(&studio,&StudioController::changed,&app,updateMask);
     if(surface)QObject::connect(surface,&RadialSurface::visualBoundsChanged,&app,updateMask);
     if(settingsSurface)QObject::connect(settingsSurface,&QQuickItem::visibleChanged,&app,updateMask);
-    for(const auto* name:{"overlayRail","overlayToolbar","overlayMorePanel","overlayResult","settingsRippleEnvelope"})if(auto* item=overlay->findChild<QQuickItem*>(name)){
+    for(const auto* name:{"overlayRail","overlayToolbar","overlayMorePanel","overlayResult","settingsRippleEnvelope","glassStrengthPanel"})if(auto* item=overlay->findChild<QQuickItem*>(name)){
         QObject::connect(item,&QQuickItem::visibleChanged,&app,updateMask);
         QObject::connect(item,&QQuickItem::xChanged,&app,updateMask);
         QObject::connect(item,&QQuickItem::yChanged,&app,updateMask);
@@ -316,6 +317,21 @@ int main(int argc,char**argv) {
                         if(!pressHeld||!rippleSafe||!rippleSettled){app.exit(13);return;}
                         const bool overflow=morePanel&&morePanel->isVisible()&&!surface->isVisible()&&settingsSurface->buttons().size()==6&&overlay->property("settingsReady").toBool();
                         overlay->grabWindow().save(output+"/runtime-more.png");
+                        const auto checkGlassPanel=[&,output](QPointF anchor,bool docked,const QString& name){
+                            overlay->setProperty("glassAnchor",anchor);overlay->setProperty("glassAnchorDocked",docked);
+                            overlay->setProperty("glassAdjustmentOpen",true);studio.setGlassStrength(.35);
+                            QEventLoop wait;QTimer::singleShot(100,&wait,&QEventLoop::quit);wait.exec();
+                            const auto* panel=overlay->findChild<QQuickItem*>("glassStrengthPanel");
+                            const auto* slider=overlay->findChild<QQuickItem*>("glassStrengthSlider");
+                            bool ok=panel&&slider&&panel->isVisible()&&backdrop.requestAccepted()&&qFuzzyCompare(backdrop.strength(),.35)
+                                &&overlay->mask().contains(slider->mapRectToScene(slider->boundingRect()).toAlignedRect());
+                            if(panel){const auto image=overlay->grabWindow();const auto r=panel->mapRectToScene(panel->boundingRect()).adjusted(-4,-4,4,4);
+                                const auto scale=qreal(image.width())/overlay->width();
+                                ok=ok&&image.copy(QRectF(r.x()*scale,r.y()*scale,r.width()*scale,r.height()*scale).toAlignedRect()).save(output+"/"+name+".png");}
+                            overlay->setProperty("glassAdjustmentOpen",false);studio.setGlassStrength(.60);
+                            qInfo()<<name<<"native control coverage and strength"<<ok;return ok;
+                        };
+                        if(!checkGlassPanel(center+QPointF(0,70),false,"runtime-radial-glass-strength")){app.exit(14);return;}
                         overlay->setProperty("menuOpen",false);
                         QMetaObject::invokeMethod(studio.stylus(),"sideButtonPressed",Qt::DirectConnection);
                         const bool hidden=!overlay->isVisible();
@@ -323,7 +339,7 @@ int main(int argc,char**argv) {
                         const bool reopened=overlay->isVisible();
                         studio.runtime()->setReducedMotion(true);
                         if(!studio.runtime()->docked())studio.runtime()->toggleDock();
-                        QTimer::singleShot(150,&app,[&,output,shown,hidden,reopened,centered,overflow]{
+                        QTimer::singleShot(150,&app,[&,output,shown,hidden,reopened,centered,overflow,checkGlassPanel]{
                             const bool rail=studio.runtime()->docked()&&overlay->grabWindow().save(output+"/runtime-docked.png");
                             auto* housing=overlay->findChild<QQuickItem*>("overlayRail");
                             auto* railToggle=overlay->findChild<QObject*>("railSettingsButton");
@@ -340,6 +356,9 @@ int main(int argc,char**argv) {
                             QEventLoop settle;QTimer::singleShot(1000,&settle,&QEventLoop::quit);settle.exec();
                             const auto* railPanel=overlay->findChild<QQuickItem*>("railSettingsPanel");
                             const bool narrowOpen=railPanel&&railPanel->isVisible()&&!surface->isVisible()&&overlay->mask().boundingRect().width()==44&&saveRail("runtime-rail-settings.png");
+                            QQuickItem* glassButton=nullptr;
+                            if(railPanel)for(auto* child:railPanel->childItems())if(child->objectName()=="railAction_glass")glassButton=child;
+                            if(!glassButton||!checkGlassPanel(glassButton->mapToScene({22,22}),true,"runtime-dock-glass-strength")){app.exit(14);return;}
                             if(railToggle)QMetaObject::invokeMethod(railToggle,"clicked",Qt::DirectConnection);
                             QEventLoop closeWait;QTimer::singleShot(1000,&closeWait,&QEventLoop::quit);closeWait.exec();
                             const bool flips=narrowClosed&&narrowOpen&&surface->isVisible();

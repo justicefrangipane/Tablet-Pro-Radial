@@ -32,6 +32,7 @@ class StudioController : public QObject {
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY changed)
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY changed)
     Q_PROPERTY(bool soundEnabled READ soundEnabled WRITE setSoundEnabled NOTIFY changed)
+    Q_PROPERTY(qreal glassStrength READ glassStrength WRITE setGlassStrength NOTIFY changed)
     Q_PROPERTY(QString soundTheme READ soundTheme WRITE setSoundTheme NOTIFY changed)
     Q_PROPERTY(QStringList soundThemeIds READ availableSoundThemeIds CONSTANT)
     Q_PROPERTY(QStringList soundThemeNames READ availableSoundThemeNames CONSTANT)
@@ -65,11 +66,13 @@ public:
     bool canUndo() const { return !undo_.empty(); }
     bool canRedo() const { return !redo_.empty(); }
     bool soundEnabled() const { return soundEnabled_; }
+    qreal glassStrength() const { return glassStrength_; }
+    void setGlassStrength(qreal value);
     QString soundTheme() const { return audio_.theme(); }
     QStringList availableSoundThemeIds() const { return tabletpro::soundThemeIds(); }
     QStringList availableSoundThemeNames() const { return tabletpro::soundThemeNames(); }
     void setSoundTheme(const QString& theme);
-    Q_INVOKABLE void previewSound() { audio_.preview(); }
+    Q_INVOKABLE void previewSound(const QString& cue = "open") { audio_.preview(cue); }
     Q_INVOKABLE void playMenuSound(const QString& cue) { audio_.play(cue); }
     bool backdropEnabled() const { return backdropEnabled_; }
     bool reducedMotion() const { return reducedMotion_; }
@@ -130,6 +133,7 @@ private:
     QString selected_,status_="Draft preview · actions stay inside the editor",error_;
     std::vector<Snapshot> undo_,redo_;
     bool soundEnabled_=false,reducedMotion_=false,backdropEnabled_=true;
+    qreal glassStrength_=.60;
     const radial::Node* selectedNode() const;
     radial::Node* selectedNode();
     std::string parentOf(const std::string& id) const;

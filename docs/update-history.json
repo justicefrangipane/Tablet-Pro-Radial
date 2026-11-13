@@ -2,6 +2,18 @@
   "app": "Tablet Pro Radial",
   "releases": [
     {
+      "version": "0.3.29",
+      "date": "2026-11-13",
+      "title": "Subtle modifier lock sounds and adjustable Glass",
+      "new": [
+        "Each of the twelve sound themes has a quiet confirmation when you pull Alt, Ctrl, or Shift into the locked state. It plays once when the lock succeeds; the modifier still releases when the pen leaves hover range. Preview lock in the editor lets you hear it without holding a key.",
+        "Drag outward from Glass in the bronze radial menu, or rightward from Glass on the dock, to reveal a strength slider. Keep dragging to adjust, or release and use the slider. Tapping Glass still switches it on or off."
+      ],
+      "improved": [
+        "Glass starts at a gentler 60% strength. Adjust from 0% to 100%, where 100% matches the previous effect. The strength updates live and is remembered independently of the Glass toggle, including in saved test documents."
+      ]
+    },
+    {
       "version": "0.3.28",
       "date": "2026-11-13",
       "title": "Clean radial button edges",

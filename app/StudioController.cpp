@@ -9,6 +9,7 @@
 #include <QUuid>
 #include <QSet>
 #include <algorithm>
+#include <cmath>
 
 namespace tabletpro {
 namespace {
@@ -23,6 +24,7 @@ StudioController::StudioController(QObject* parent,const QString& configDirector
     QSettings settings;setSoundEnabled(settings.value("sound",false).toBool());setReducedMotion(settings.value("reducedMotion",false).toBool());
     setSoundTheme(settings.value("soundTheme",defaultSoundTheme()).toString());
     setBackdropEnabled(settings.value("backdrop",true).toBool());
+    setGlassStrength(settings.value("glassStrength",.60).toDouble());
     preview_.setProfile(draft_);runtime_.setProfile(applied_);
     const int duration=settings.value("durationMs",1640).toInt();preview_.setDurationMs(duration);runtime_.setDurationMs(duration);
     connect(&preview_,&MenuSession::preferencesChanged,this,[this]{runtime_.setDurationMs(preview_.durationMs());QSettings().setValue("durationMs",preview_.durationMs());});
@@ -203,11 +205,11 @@ void StudioController::applyDraft(){
     }
     if(!write(appliedPath(),encodeProfile(draft_)))return;
     applied_=draft_;runtime_.setProfile(applied_);
-    if(pendingSettings_){const auto preferences=*pendingSettings_;pendingSettings_.reset();setSoundEnabled(preferences.soundEnabled);setSoundTheme(preferences.soundTheme);setReducedMotion(preferences.reducedMotion);setBackdropEnabled(preferences.backdropEnabled);preview_.setDurationMs(preferences.durationMs);}
+    if(pendingSettings_){const auto preferences=*pendingSettings_;pendingSettings_.reset();setSoundEnabled(preferences.soundEnabled);setSoundTheme(preferences.soundTheme);setReducedMotion(preferences.reducedMotion);setBackdropEnabled(preferences.backdropEnabled);setGlassStrength(preferences.glassStrength);preview_.setDurationMs(preferences.durationMs);}
     status_="Applied · the next gesture uses this revision";emit changed();
 }
 void StudioController::discardDraft(){if(!dirty())return;edit([&]{draft_=applied_;pendingSettings_.reset();});status_="Draft restored to the applied menu · Undo can recover it";emit changed();}
-RadialSettings StudioController::currentSettings()const{return {soundEnabled_,reducedMotion_,preview_.durationMs(),backdropEnabled_,soundTheme()};}
+RadialSettings StudioController::currentSettings()const{return {soundEnabled_,reducedMotion_,preview_.durationMs(),backdropEnabled_,soundTheme(),glassStrength_};}
 QUrl StudioController::suggestedTestFile()const{return QUrl::fromLocalFile(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)+"/Test.radial.json");}
 void StudioController::saveFile(const QUrl&url){saveTestFile(url);}
 void StudioController::saveCurrentFile(){if(currentFile_.isEmpty()){error_="Choose Save test radial… to create a file.";emit changed();return;}saveTestFile(currentFile_);}
@@ -233,6 +235,7 @@ void StudioController::loadFile(const QUrl&url){
 void StudioController::setSoundTheme(const QString& theme){if(!soundThemeIds().contains(theme))return;audio_.setTheme(theme);QSettings().setValue("soundTheme",theme);emit changed();}
 void StudioController::setSoundEnabled(bool value){soundEnabled_=value;audio_.setEnabled(value);QSettings().setValue("sound",value);emit changed();}
 void StudioController::setBackdropEnabled(bool value){backdropEnabled_=value;QSettings().setValue("backdrop",value);emit changed();}
+void StudioController::setGlassStrength(qreal value){if(!std::isfinite(value))return;glassStrength_=qBound(0.0,value,1.0);QSettings().setValue("glassStrength",glassStrength_);emit changed();}
 void StudioController::setReducedMotion(bool value){reducedMotion_=value;preview_.setReducedMotion(value);runtime_.setReducedMotion(value);QSettings().setValue("reducedMotion",value);emit changed();}
 void StudioController::showOverlay(){status_=platform_.nativeAvailable()?"Use your pen side button or Ctrl+Alt+Space from your drawing app.":"Overlay simulation · native shortcut delivery is available in the Windows build";emit showRuntimeRequested(platform_.captureForegroundTarget(),false);emit changed();}
 void StudioController::hideOverlay(){runtime_.cancel();emit dismissRuntimeRequested();}

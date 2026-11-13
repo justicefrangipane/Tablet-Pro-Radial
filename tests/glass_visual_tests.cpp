@@ -79,6 +79,14 @@ int main(int argc,char** argv){
         const auto before=detail(plain,top),after=detail(blurred,top);
         check(before>15&&after<before*.25,"glass must blur the pattern, not merely tint it");
         check(difference(mean(blurred,top),mean(blurred,bottom))>80,"glass must retain background colors, not a solid fallback");
+        const auto strengthBuilds=glass.shapeBuildCount();
+        glass.setStrength(0);settle(300);const auto clearStrength=capture(background);
+        glass.setStrength(.35);settle(300);const auto softStrength=capture(background);
+        const auto clearDetail=detail(clearStrength,top),softDetail=detail(softStrength,top);
+        std::cout<<"Glass strength detail: "<<clearDetail<<" / "<<softDetail<<" / "<<after<<'\n';
+        check(clearDetail>before*.9&&softDetail>after+2&&softDetail<clearDetail-2,"strength visibly blends from clear to soft to full Glass");
+        check(window.mask()==shape&&glass.shapeBuildCount()==strengthBuilds,"strength changes preserve input shape and reuse the Glass contour");
+        glass.setStrength(1);settle(300);
         SetWindowLongPtrW(background,GWLP_USERDATA,1);InvalidateRect(background,nullptr,FALSE);settle(600);const auto changed=capture(background);
         check(difference(mean(blurred,top),mean(changed,top))>80,"glass must update from the live background");
         glass.setEnabled(false);settle();const auto disabled=capture(background);

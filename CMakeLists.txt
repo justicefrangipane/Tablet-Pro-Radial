@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(TabletProRadial VERSION 0.3.28 LANGUAGES CXX)
+project(TabletProRadial VERSION 0.3.29 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -71,7 +71,19 @@ if(TABLETPRO_BUILD_DESKTOP)
     assets/sounds/porcelain-touch-close.wav
     assets/sounds/crystal-hush-press.wav
     assets/sounds/crystal-hush-open.wav
-    assets/sounds/crystal-hush-close.wav)
+    assets/sounds/crystal-hush-close.wav
+    assets/sounds/crystal-whisper-modifier-lock.wav
+    assets/sounds/watch-tick-modifier-lock.wav
+    assets/sounds/felt-click-modifier-lock.wav
+    assets/sounds/walnut-tap-modifier-lock.wav
+    assets/sounds/bamboo-ticks-modifier-lock.wav
+    assets/sounds/tiny-gears-modifier-lock.wav
+    assets/sounds/linen-tick-modifier-lock.wav
+    assets/sounds/cork-touch-modifier-lock.wav
+    assets/sounds/cedar-knock-modifier-lock.wav
+    assets/sounds/bamboo-bead-modifier-lock.wav
+    assets/sounds/porcelain-touch-modifier-lock.wav
+    assets/sounds/crystal-hush-modifier-lock.wav)
   target_link_libraries(radial_studio PUBLIC radial_core Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Multimedia)
   if(WIN32)
     target_link_libraries(radial_studio PRIVATE user32 gdi32 dwmapi hid)
@@ -154,7 +166,7 @@ if(TABLETPRO_BUILD_DESKTOP)
       add_test(NAME installer_workflow COMMAND "${INSTALLER_TEST_EXE}")
       set_tests_properties(installer_workflow PROPERTIES TIMEOUT 40)
       add_executable(radial_settings_tests tests/settings_bloom_tests.cpp)
-      target_link_libraries(radial_settings_tests PRIVATE radial_studio Qt6::Widgets)
+      target_link_libraries(radial_settings_tests PRIVATE radial_studio Qt6::Widgets Qt6::Test)
       qt_add_resources(radial_settings_tests settings_test_qml PREFIX "/" FILES qml/Main.qml qml/Overlay.qml qml/HubButton.qml qml/HoverTip.qml qml/ParentMenu.qml qml/BloomLayer.qml qml/RadialDragHandler.qml)
       qt_add_shaders(radial_settings_tests settings_test_shader PREFIX "/" FILES shaders/gentle-bloom.frag)
       add_test(NAME settings_bloom_rendered COMMAND radial_settings_tests)

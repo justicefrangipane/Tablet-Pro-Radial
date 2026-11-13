@@ -19,6 +19,8 @@
 #include <QScreen>
 #include <QTabletEvent>
 #include <QPointingDevice>
+#include <QtTest/QTest>
+#include <QtTest/qtesttouch.h>
 #include <iostream>
 #include <stdexcept>
 #include <functional>
@@ -134,6 +136,43 @@ int main(int argc,char**argv){
             expect(!surface->isVisible()&&actions->isEnabled(),"finished settings replace tools and become interactive");
             expect(bronzePixels(capture("open"))>=last,"final frame is fully bronze");
             expect(!envelope->isVisible(),"the temporary ripple envelope retires at rest");
+            auto* glassPanel=overlay->findChild<QQuickItem*>("glassStrengthPanel");
+            auto* slider=overlay->findChild<QQuickItem*>("glassStrengthSlider");
+            QQuickItem* dockGlass=nullptr;
+            for(auto* child:panel->childItems())if(child->objectName()=="railAction_glass")dockGlass=child;
+            expect(!docked||dockGlass,"docked Glass action exists in the visual delegate list");
+            const auto glassPoint=docked?dockGlass->mapToScene({22,22}):bloom->mapToScene({108,178});
+            const bool wasEnabled=studio.backdropEnabled();
+            QTest::mouseClick(overlay,Qt::LeftButton,Qt::NoModifier,glassPoint.toPoint());
+            expect(studio.backdropEnabled()!=wasEnabled&&!glassPanel->isVisible(),"tapping Glass still toggles without opening the slider");
+            QTest::mouseClick(overlay,Qt::LeftButton,Qt::NoModifier,glassPoint.toPoint());
+            QTest::mousePress(overlay,Qt::LeftButton,Qt::NoModifier,glassPoint.toPoint());
+            for(int distance:{12,30,55,75})QTest::mouseMove(overlay,(glassPoint+(docked?QPointF(distance,0):QPointF(0,distance))).toPoint(),15);
+            expect(glassPanel->isVisible()&&studio.backdropEnabled(),"dragging Glass outward opens strength and enables its live preview");
+            const auto low=slider->mapToScene({slider->width()*.25,slider->height()/2});
+            QTest::mouseMove(overlay,low.toPoint(),20);QTest::mouseRelease(overlay,Qt::LeftButton,Qt::NoModifier,low.toPoint());
+            expect(studio.glassStrength()>.15&&studio.glassStrength()<.35&&glassPanel->isVisible()&&studio.backdropEnabled(),"the same drag adjusts strength and release does not toggle Glass off");
+            const auto high=slider->mapToScene({slider->width()*.75,slider->height()/2});
+            QTest::mouseClick(overlay,Qt::LeftButton,Qt::NoModifier,high.toPoint());
+            expect(studio.glassStrength()>.65&&studio.glassStrength()<.85,"the revealed slider remains directly adjustable");
+            expect(QRectF(0,0,overlay->width(),overlay->height()).contains(glassPanel->mapRectToScene(glassPanel->boundingRect())),"strength popup stays inside the screen");
+            capture("glass-strength");overlay->setProperty("glassAdjustmentOpen",false);
+            penEvent(QEvent::TabletPress,glassPoint);
+            for(int distance:{12,30,55,75}){penEvent(QEvent::TabletMove,glassPoint+(docked?QPointF(distance,0):QPointF(0,distance)));wait(15);}
+            auto* pull=docked?dockGlass->findChild<QObject*>("railGlassPull"):overlay->findChild<QObject*>("radialGlassPull");
+            std::cout<<mode.toStdString()<<" pen Glass pull active "<<(pull&&pull->property("active").toBool())<<" opened "<<overlay->property("glassAdjustmentOpen").toBool()<<'\n';
+            expect(glassPanel->isVisible(),"stylus pull reveals Glass strength in both layouts");
+            penEvent(QEvent::TabletMove,low);penEvent(QEvent::TabletRelease,low);
+            expect(studio.glassStrength()>.15&&studio.glassStrength()<.35&&glassPanel->isVisible(),"stylus continues into the strength slider without toggling Glass");
+            overlay->setProperty("glassAdjustmentOpen",false);
+            auto* finger=QTest::createTouchDevice();
+            QTest::touchEvent(overlay,finger).press(73,glassPoint.toPoint(),overlay);wait(20);
+            for(int distance:{12,30,55,75}){QTest::touchEvent(overlay,finger).move(73,(glassPoint+(docked?QPointF(distance,0):QPointF(0,distance))).toPoint(),overlay);wait(20);}
+            expect(glassPanel->isVisible(),"finger pull reveals Glass strength in both layouts");
+            QTest::touchEvent(overlay,finger).move(73,high.toPoint(),overlay);wait(20);
+            QTest::touchEvent(overlay,finger).release(73,high.toPoint(),overlay);wait(20);
+            expect(studio.glassStrength()>.65&&studio.glassStrength()<.85&&glassPanel->isVisible(),"finger can adjust strength during the original pull gesture");
+            overlay->setProperty("glassAdjustmentOpen",false);studio.setGlassStrength(.60);studio.setBackdropEnabled(wasEnabled);
             if(!docked)for(const auto& value:qobject_cast<RadialSurface*>(ring)->buttons()){
                 const auto b=value.toMap();expect(qobject_cast<RadialSurface*>(ring)->hitRoot(b["cx"].toDouble(),b["cy"].toDouble())==b["id"].toString(),"settings hit targets follow their resting artwork");
             }

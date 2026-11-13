@@ -7,7 +7,7 @@ static void initializeSounds() { Q_INIT_RESOURCE(radial_sounds); }
 namespace tabletpro {
 AudioFeedback::AudioFeedback(QObject* parent):QObject(parent) {
     initializeSounds();setObjectName("audioFeedback");limiter_.start();
-    for (const auto& theme : soundThemeIds()) for (const auto& cue : {"press", "open", "close"}) {
+    for (const auto& theme : soundThemeIds()) for (const auto& cue : {"press", "open", "close", "modifier-lock"}) {
         auto* effect=new QSoundEffect(this);
         const auto key=theme+"/"+cue;
         effect->setObjectName(key);
@@ -21,7 +21,7 @@ void AudioFeedback::setTheme(const QString& theme) {
     if(!soundThemeIds().contains(theme)||theme_==theme)return;
     stop();theme_=theme;
 }
-void AudioFeedback::preview() { playCue("open",true); }
+void AudioFeedback::preview(const QString& cue) { playCue(cue,true); }
 void AudioFeedback::play(const QString& cue) { playCue(cue,false); }
 void AudioFeedback::playCue(const QString& cue,bool preview) {
     if(!enabled_&&!preview)return;
@@ -32,6 +32,8 @@ void AudioFeedback::playCue(const QString& cue,bool preview) {
     auto* effect=effects_.value(theme_+"/"+sample,nullptr);
     if(!effect||effect->status()!=QSoundEffect::Ready)return;
     if(cue=="tick"&&limiter_.elapsed()<65)return;
+    const auto* lock=effects_.value(theme_+"/modifier-lock",nullptr);
+    if(cue=="tick"&&lock&&lock->isPlaying())return;
     limiter_.restart();
     // One brief voice; hover ticks are quieter than a deliberate press.
     stop();effect->setVolume(cue=="tick"?.24f:.45f);effect->play();

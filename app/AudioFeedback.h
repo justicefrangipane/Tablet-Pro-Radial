@@ -13,7 +13,7 @@ public:
     void setEnabled(bool value);
     void setTheme(const QString& theme);
     QString theme() const { return theme_; }
-    void preview();
+    void preview(const QString& cue = "open");
 signals:
     void cuePlayed(const QString& theme, const QString& cue, bool preview);
 public slots:
