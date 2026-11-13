@@ -1,10 +1,12 @@
-# Local candidate: 0.3.29
+# Release: 0.3.29
 
 Each of the twelve sound themes now has a dedicated quiet modifier-lock clip, synthesized from its existing original timbre. Successful pull-to-hover locking emits the cue once; continued movement, selecting-contact release and hover exit do not repeat it. A failed lock stays silent. Sound off is respected, hover ticks cannot interrupt a playing lock cue, and Preview lock auditions it without holding a key or changing mute.
 
 Dragging out of Glass reveals a live 0–100% strength slider in the radial and docked settings menus. Mouse, pen and touch can continue the original pull into adjustment, or release and use the slider. Tapping still toggles Glass. Pulling while off enables the material for preview. Strength starts at 60%, persists independently of the toggle and is included in portable documents; old documents default to 60%. The composition visual blends with the live background without rebuilding the diffusion contour or changing the menu footprint. The native input cutout includes the popup controls.
 
-All ten Windows suites are covered by the full run and affected-suite reruns. Checks include all 48 WAVs, 688 application integration checks, every theme/key/layout lock transition, mute/preview/persistence, invalid imported strength, native rendered strength levels, and mouse/pen/touch Glass drags in both layouts. Center dragging, ripple, docking and clipping regressions also pass. Package, visual and installation receipts are outside the source archive. This is a local update, not a published GitHub release.
+All ten Windows suites are covered by the full run and affected-suite reruns. Checks include all 48 WAVs, 688 application integration checks, every theme/key/layout lock transition, mute/preview/persistence, invalid imported strength, native rendered strength levels, and mouse/pen/touch Glass drags in both layouts. Center dragging, ripple, docking and clipping regressions also pass. Package, visual and installation receipts are outside the source archive.
+
+Published November 13, 2026 as the latest stable GitHub release, tagged at source commit `f3203cfc64737c8d4837deb1da13470df618e176`. All three uploaded asset digests match the verified local installer, matching source archive and checksums. GitHub's Portable core check passed. The actual updater discovers 0.3.29 from 0.3.27, downloads and verifies the installer, and reports 0.3.29 up to date. Local installation verified all 1,587 files and preserved the saved menu and preferences. This release includes the previously local 0.3.28 clipping correction below. Subsequent publication documentation is separate from the unchanged release tag and packaged source.
 
 # Previous local candidate: 0.3.28
 
